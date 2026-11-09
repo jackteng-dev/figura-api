@@ -1,0 +1,18 @@
+spring:
+  flyway:
+    enabled: true
+    locations: classpath:db/demo-migration
+    baseline-on-migrate: false
+
+shop:
+  returns:
+    mock-enabled: ${MOCK_RETURNS_ENABLED:false}
+  refunds:
+    mock-enabled: ${MOCK_REFUNDS_ENABLED:false}
+  fulfillment:
+    mock-enabled: ${MOCK_FULFILLMENT_ENABLED:false}
+  orders:
+    expiry-enabled: true
+  payments:
+    mock-enabled: ${MOCK_PAYMENTS_ENABLED:false}
+    mock-secret: ${MOCK_PAYMENT_WEBHOOK_SECRET:}

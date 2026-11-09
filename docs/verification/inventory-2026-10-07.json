@@ -1,0 +1,389 @@
+{
+  "date": "2026-10-07",
+  "timezone": "Asia/Taipei",
+  "milestone": "1C SKU stock adjustment and audit",
+  "startingMain": {
+    "shop_bak_ap": "ab5389aaacb40e5311f66e7fb513f35387d2e439",
+    "Shop_back": "ec8dd64bce0215b37bfe273889e2dc23e46d232e"
+  },
+  "runtime": {
+    "observedSpecRevision": "136",
+    "httpPolicy": "unrestricted, enforced; inherited proxy and CA preserved",
+    "database": "isolated MySQL8.4 elpsy_shop_demo",
+    "redis": "isolated Redis7; DB0 application, DB15 staff integration",
+    "cookieSecure": false,
+    "cookieScope": "loopback HTTP only"
+  },
+  "cleanup": {
+    "ownedServicesStopped": true,
+    "ownedContainersRemoved": [
+      "elpsy-shop-inventory-mysql",
+      "elpsy-shop-inventory-redis"
+    ],
+    "portsReleased": [
+      19092,
+      15176,
+      13306,
+      17379
+    ],
+    "publicProductsBeforeCleanup": 0,
+    "integrationCustomerFixturesBeforeCleanup": 0,
+    "invalidBalances": 0,
+    "invalidAuditChains": 0,
+    "rolesRestored": true,
+    "testTriggersRemaining": 0,
+    "otherProjectsTouched": false,
+    "migrations": [
+      {
+        "version": 1,
+        "checksum": 1214867563,
+        "success": true
+      },
+      {
+        "version": 2,
+        "checksum": -256832983,
+        "success": true
+      },
+      {
+        "version": 3,
+        "checksum": 387205153,
+        "success": true
+      },
+      {
+        "version": 4,
+        "checksum": -872005538,
+        "success": true
+      }
+    ]
+  },
+  "productionDeployment": false,
+  "privateValuesExcluded": true,
+  "limitations": [
+    "No order reservation/sales decrement/cart/checkout",
+    "Public available is a snapshot, not a stock reservation",
+    "No database-admin tamper-proof audit or production DB privileges validation",
+    "Pending UI operation survives only within current product component",
+    "No original database migration or real inventory data"
+  ],
+  "source": {
+    "files": {
+      "scripts/smoke_inventory.py": "97080c8f65196da78a882e2cfa27a772b2081ab79b338ff08167aeaa059d7a0b",
+      "src/main/java/com/shop/elpsy/controller/InventoryController.java": "55b0dfabd809fa49fc7bfb86d5c9bcfed0174c06e2bc112d49256f69d06b4282",
+      "src/main/java/com/shop/elpsy/dto/InventoryPayloads.java": "47417a2f14844c6ca972ef3bcf9594fe87dcb0fed5b7183a0f49e00e2a2e4e60",
+      "src/main/java/com/shop/elpsy/mapper/InventoryMapper.java": "7b1e79fee830854e76f1eadbe636898ca563697a63718b9db3520ab6a6ca29ab",
+      "src/main/java/com/shop/elpsy/pojo/InventoryAdjustment.java": "16c0b0e12768c7c70b1cb3cbe20661b69d3a557716e62605d7ff4b6f28190e7c",
+      "src/main/java/com/shop/elpsy/pojo/InventoryBalance.java": "4fcdcfdb7bebefcb64bb49b3efef7ed10669a23cfd7844564df30d5dece19c6e",
+      "src/main/java/com/shop/elpsy/service/InventoryService.java": "c668a1caa8fbcfaf598121c7fe57147f3909933744d412a636d642d2641a13aa",
+      "src/main/resources/db/demo-migration/V4__sku_inventory_and_adjustment_audit.sql": "c1d8ab39de57f3e8a6ab227f3f53136e7a1bef48d80d942864c5435028208402",
+      "src/test/java/com/shop/elpsy/InventoryIntegrationTest.java": "f2ca50198597fba23e6b7cb7e0eecd4bd56f28a7577ba19535936d87911579e3",
+      "pom.xml": "6e277029f041002cc39e03ee4e9cb066f1cc87894e4e6db31e7f4a41f30e83e5",
+      "scripts/demo-identity-schema.sql": "cb7e8e217c602ec5d31fe68042e3440a993d47d4afb39f979f05811cda2cfc9f",
+      "scripts/init_demo_env.py": "310e52e8d090d7b6c335b2ea16ae81cbd16c699f47479ee01b60c49d33058846",
+      "scripts/smoke_auth.py": "6681548cd588b0e530955e8e2d8cb45ebc51030b9e131c6f2f11be9402c26047",
+      "scripts/smoke_catalog.py": "b8beb1e3aeabe0e7b6d08b1d2132422e839563d8a67bf741e9e3a0a305200e47",
+      "scripts/smoke_customer.py": "f88833fe9684dc5ec411ae54464d9cd2d88eb516f11d46ae6469266e23506772",
+      "src/main/java/com/shop/elpsy/ELPSY_ShopApplication.java": "c640f808838fe34e98aa78ead56221b7ad649a58dec400f1db6fcc18ba2ccd95",
+      "src/main/java/com/shop/elpsy/anno/State.java": "04e6aa5d446f4d9811bdcc026ae77f060b44c70f71a669c05a895b8897e98d37",
+      "src/main/java/com/shop/elpsy/config/DemoAccountInitializer.java": "28f32148c38cbe9e096758a147b6cd58d992df83c987a972ed75fd7ea4a26bb8",
+      "src/main/java/com/shop/elpsy/config/DemoMigrationGuard.java": "936cf3c81e05b524d3b8ab1fb6221e3f663e3c3a38ab6f1ec1c3f5f7e14234ff",
+      "src/main/java/com/shop/elpsy/config/WebConfig.java": "587c7f23256bb097d53a34d49dc01f4f88e4078dec42c7f84c5be2efd0ad8761",
+      "src/main/java/com/shop/elpsy/controller/AdminUserController.java": "8b4310a6e08d57fd527c7e90889d0f2a1ea97d0d19adbd0cb0f29b0b33f10094",
+      "src/main/java/com/shop/elpsy/controller/ArticleController.java": "29c3f1fd1c33779c7d6183a05638dc05998aaeaf1ce53882d3ef051caead6bcb",
+      "src/main/java/com/shop/elpsy/controller/AuthenticationController.java": "6ab742731f82aca240a4126b47fdbe680705a21fc60568bbf9fb3ead354f42c1",
+      "src/main/java/com/shop/elpsy/controller/CatalogController.java": "d08b22e389300ba3eda1a51d2960b899ed2dec297ec22dafc255b6a9db4816ee",
+      "src/main/java/com/shop/elpsy/controller/CategoryController.java": "d917190bee6daf703b35591505db748ec71c4e200a8735a0488cc545664d26c7",
+      "src/main/java/com/shop/elpsy/controller/CustomerController.java": "3a54abcb46c264bed92cb99c38aa48c8f76d097ea7f61503a87bacf6132f910a",
+      "src/main/java/com/shop/elpsy/controller/FileUploadController.java": "63375012f25ee4b3d030c4898a1216c3dda0e151dd73f450c898762cc00c5a6f",
+      "src/main/java/com/shop/elpsy/controller/MinioController.java": "51a570b0aaaf44eba639ea98427b19550d7bac23ba3170380990dce5b24905ad",
+      "src/main/java/com/shop/elpsy/controller/RoleController.java": "94064119e3ba7a6600a70cfe9ca842dd8e4174c1b34aaa8ca4a1f3d55d908323",
+      "src/main/java/com/shop/elpsy/controller/UserController.java": "e2742f356053408034408229a576ba22f9fd2119d7f1716e8417ab8629bdd0fb",
+      "src/main/java/com/shop/elpsy/dto/CatalogPayloads.java": "b1a2f564cbea183030b123f40fa0afdf438e1ec125d7ca01e73db025e0956a6e",
+      "src/main/java/com/shop/elpsy/dto/CustomerPayloads.java": "fe5f767532fa9f29bc04ea59e46f5bb823ea018e3ff92af072f86b804378c64b",
+      "src/main/java/com/shop/elpsy/dto/LoginResponseDTO.java": "823dfc0657f69179cefcf29492bf970e35007b266b8e7270c7b4b0e5dd5ebc51",
+      "src/main/java/com/shop/elpsy/dto/RoleAssignDto.java": "932557318421af4c7de51a3c9b62b4af671d8aabb5a02b8aaa798f1e318b66d8",
+      "src/main/java/com/shop/elpsy/dto/UserAccount.java": "62291c671ade940d536127e8c3750340feb3d945606ddbcbbf7fe716249d242c",
+      "src/main/java/com/shop/elpsy/dto/UserRegistrationDto.java": "5774b7c0504c79f1f27c0b7876a46e34b21cf197109323d83ab8e2e01757f3fa",
+      "src/main/java/com/shop/elpsy/dto/UserRoleDto.java": "62ff2b68e96afc3a1d83a1e0438508480ddf4ff77e18fbe7096fa1ba2d34bdb0",
+      "src/main/java/com/shop/elpsy/expection/GlobalExceptionHandler.java": "69140ab77eeea076c3831b769dcaf702aebc8e9ad2c6e87dfa9c9e9f89d70947",
+      "src/main/java/com/shop/elpsy/interceptors/LoginInterceptor.java": "98664e0b88d4b705c467a78f168b368307f117aed9aa0c376e6058f18e82de61",
+      "src/main/java/com/shop/elpsy/mapper/AdminUserMapper.java": "5c4219086591e3553118b6f211c54859ed261003aec29a1ea8d4985dbb847e49",
+      "src/main/java/com/shop/elpsy/mapper/ArticleMapper.java": "c3effd79e6ba6b152c93bf39706f3e64f6958ebd3a57f0bd5a0e42b5f7e2fddf",
+      "src/main/java/com/shop/elpsy/mapper/CatalogMapper.java": "d726c9ceae933bfe0051e8b6ec644dd6ff4d7a05d2d8313468b97b17153b5e81",
+      "src/main/java/com/shop/elpsy/mapper/CategoryMapper.java": "f886200da22f4e602fa9b5376227508375e0f615c1be646bf931d7e0e6584b74",
+      "src/main/java/com/shop/elpsy/mapper/CustomerMapper.java": "0e5b7b46b01d3324b32056593fcd3834e39b8a4dcf2f5cc7ad80315f946d019b",
+      "src/main/java/com/shop/elpsy/mapper/RoleMapper.java": "d35ed2fd02630ea59b1dc67af473534c21011dd39de2af9424f4dbd7b139af76",
+      "src/main/java/com/shop/elpsy/mapper/UserMapper.java": "752688591347d71dfd5e4b8ef28f60013dda4e755ff47773b4542be23b671a36",
+      "src/main/java/com/shop/elpsy/pojo/Article.java": "2a3801da203fdbc99aab4943e3e4041029f07eb94fb20f1b633087cc877ec345",
+      "src/main/java/com/shop/elpsy/pojo/CatalogProduct.java": "e1f7c3fa27812abd458d0f07336293815e69954c206792461f86350cc30e59ee",
+      "src/main/java/com/shop/elpsy/pojo/CatalogSku.java": "00c66c0cb680785789836abc30398e9ae1b6e0155d04ec06d67d816d17bab371",
+      "src/main/java/com/shop/elpsy/pojo/Category.java": "61312e99920a964fe3fb7e195a44046e8602f7e5863155401e0991c6602caf36",
+      "src/main/java/com/shop/elpsy/pojo/CustomUserDetails.java": "a5b5f75e99054d124cb1cc696bae611ee888a4d9592977ff507649aac66dacee",
+      "src/main/java/com/shop/elpsy/pojo/Customer.java": "6b4d160c19666ad9361e49aa15b9b9a8e85a2f41818fd7c834c5c862a226dad2",
+      "src/main/java/com/shop/elpsy/pojo/CustomerPrincipal.java": "44fb342020518cf1bbe27ea9b6ed69402ccee1236af24375104e2f6549a6ff1a",
+      "src/main/java/com/shop/elpsy/pojo/JwtToken.java": "296d00480bcaca72ba2c30658f22893d0b7dd0e6c0c9d9fcbf0f566833d0b391",
+      "src/main/java/com/shop/elpsy/pojo/OrderDetails.java": "7af3ce8694c541998b41274e49e3092bfe94495228ac969cca643493b3ee7798",
+      "src/main/java/com/shop/elpsy/pojo/OrderItems.java": "742adb4d6a1be7ede08b48ac14d327c044aaf789655e0b465a9010f7368f3fc4",
+      "src/main/java/com/shop/elpsy/pojo/PageBean.java": "0367c98ed8684d3d6abf81d468d2e77c692011e788adcd56d58c286fee0f0ce7",
+      "src/main/java/com/shop/elpsy/pojo/Permission.java": "226ff253265b5d0e8684f1c6563845c8b0aac300fe224e61ba5abb19a0bc3e1e",
+      "src/main/java/com/shop/elpsy/pojo/Product.java": "94d33844591a76682464f9994a0764a09c08e9508e50adc7e0d917ccc00296d6",
+      "src/main/java/com/shop/elpsy/pojo/ProductCategory.java": "b49fcd8bb09e7667bbd3e5b86cc1b191ca3b1c892c623d2978f7d38b85a50f4d",
+      "src/main/java/com/shop/elpsy/pojo/Result.java": "f6dfaabbb7a6c80e9073433fe9feae8d0cfac5e84ee54784bc3a9b1e6570418b",
+      "src/main/java/com/shop/elpsy/pojo/Role.java": "45e12896034c2e1ab8bca5e80670a21e435825907cb601bcb5a8549b3c41f7d7",
+      "src/main/java/com/shop/elpsy/pojo/User.java": "75a29444ff2b861db59e3ca3dbf60c32da5b8e790b77b3321115b9c398c71351",
+      "src/main/java/com/shop/elpsy/service/AdminSessionService.java": "88335a9bb9045dd2669f25057f288a0e7a537c2365c0f6fa7719c393c534b7c4",
+      "src/main/java/com/shop/elpsy/service/AdminUserService.java": "bf9d71a4b1c8dcbf3f72002beeb7914caed8da47d20a368064caebcb01a1ef9d",
+      "src/main/java/com/shop/elpsy/service/ArticleService.java": "1d3de50c410da51e120708dfdd9bd8ab0e7b1273fe26fa0a8fcadbb70c0d0ca1",
+      "src/main/java/com/shop/elpsy/service/CatalogService.java": "ad831667a2cdd1beb4d7136cc8172f6fbb3479da280fb380047a2796f59a8686",
+      "src/main/java/com/shop/elpsy/service/CategoryService.java": "8dc0100b531a144f50e43604f24fd256f9dd2b15054b5a56c407f7a5028d6862",
+      "src/main/java/com/shop/elpsy/service/CustomerSessionService.java": "8d2506dcbf5994708049998cb8135eb40b95956729faa7b850b3f1034b0f7190",
+      "src/main/java/com/shop/elpsy/service/RoleService.java": "98c9fc386239e4c2cb43362091e2123ee47df9a5b37a8a9c0bf44f5c5977a025",
+      "src/main/java/com/shop/elpsy/service/UserService.java": "7ea794f942233465cd87af43db6226904611bfd0afcc792c6d3d17d208a67f6d",
+      "src/main/java/com/shop/elpsy/service/impl/AdminUserServiceImpl.java": "cbb74ae30fa6f4e27f1c9ef6a7b8a89f37b91c8f6910cf5c08ac421f24c0f96d",
+      "src/main/java/com/shop/elpsy/service/impl/ArticleServiceImpl.java": "89bb745706b77c4e856f9e20b5539c8acaff5cf2117d182b51d296aba09a0240",
+      "src/main/java/com/shop/elpsy/service/impl/CategoryServiceImpl.java": "82aa5e219f6ceb47639bff35e9b950e19c5add40d7cc4dbd038c96bfdd5a8cd2",
+      "src/main/java/com/shop/elpsy/service/impl/RoleServiceImpl.java": "e00c7b044f096a5cd9f6fd26048062e4c63f3c88dc9cc64a2b7045ca28e9491a",
+      "src/main/java/com/shop/elpsy/service/impl/UserServiceImpl.java": "593fe25037574e8b63d61324571d6a7f8599c7471fd2179513fe647c84b68e1a",
+      "src/main/java/com/shop/elpsy/utils/JwtAuthenticationFilter.java": "f95a19a14b7d116e7998732072cb743272c3b59f0425849448856bf8ebd7d3ee",
+      "src/main/java/com/shop/elpsy/utils/JwtUtil.java": "9ea4b5be9f8834a5d683c5c3a1c54b934e594cc6823e710e23fa2962c07ac667",
+      "src/main/java/com/shop/elpsy/utils/ListPageUtil.java": "6eb065ee9f17db986ec357f55367a4e960c54785b38465825848534548a82327",
+      "src/main/java/com/shop/elpsy/utils/SecurityConfig.java": "d918565b6de3e2bf8ace67d0605eb583d418c400ab3776ae1be65c04a00d6998",
+      "src/main/java/com/shop/elpsy/utils/ThreadLocalUtil.java": "dbee4843646f37350be6f07d21890738072f671f1ffa346d8c7f7d9f3131ee9e",
+      "src/main/java/com/shop/elpsy/validation/StateValidation.java": "a97eddaae5f0ba4e0d387bdce1fb64dcc364e9f5ad98620a73c5311e35ee87f7",
+      "src/main/resources/application-demo.yml": "a4b63285006eabc628b6ebeecd306be34eeca0e22117f47410e0766372b37046",
+      "src/main/resources/application.yml": "6f85ab68d752d2152762daba01916d80addd753e7fe3e2d868ce56ba2f91ea3b",
+      "src/main/resources/com/shop/elpsy/mapper/AdminUserMapper.xml": "3d147cb09fbbc6aeb179a56b8eccd6b6b921f0b5eadeed1e5321e3b0bcae79e8",
+      "src/main/resources/com/shop/elpsy/mapper/ArticleMapper.xml": "a4769378982dda54483d5f7abb9fad8a01397163f0ef8bc32586ae4ac634f52e",
+      "src/main/resources/com/shop/elpsy/mapper/RoleMapper.xml": "37ad184e3e340cb4a9a974881825fa9829b4d94fb508d91f62a9445087bc1e7b",
+      "src/main/resources/com/shop/elpsy/mapper/UserMapper.xml": "3acf21c45e048d6f2a1e6c2b0c306479afd395725d15915fc9aa34ea3c6241c6",
+      "src/main/resources/db/demo-migration/V1__staff_identity.sql": "ee590b62cacc2a2590b537b6d47d81646b8bfb9d5710ec993b17b789d1cb9f86",
+      "src/main/resources/db/demo-migration/V2__customer_identity.sql": "4256ad11fa76d7dcd7721a1f10906b97acf8acfefe425104fd5bc3e589546156",
+      "src/main/resources/db/demo-migration/V3__catalog_and_permissions.sql": "7781ebaa0ed1df0b2ebb1da072fb4b61642f1f40a1f1fd19e6234cddba963d63",
+      "src/test/java/com/shop/elpsy/AdminSessionServiceTest.java": "ba8fa2af0935cc547cfcee6d70f62a6a598c1ec52b53aeb5e9e08ad128d9f8ac",
+      "src/test/java/com/shop/elpsy/CatalogIntegrationTest.java": "6951f32bd18ee75018898f9dd89e1e15f9ae342d9780c1d619db1dbe70e71c89",
+      "src/test/java/com/shop/elpsy/CustomerIdentityIntegrationTest.java": "da1ec753cd12f122f38f6b28ddab22a563d2df7a59a035e9e7e7fde0b59c9508",
+      "src/test/java/com/shop/elpsy/JwtAuthenticationFilterTest.java": "61614b540b3b850c301e35788b29a46e3e9b9de93b54de5acb3ad21dd963a5f6",
+      "src/test/java/com/shop/elpsy/JwtTest.java": "e92520d501c951be314eef2194ab09373811bd135e072aa19070d76f49d1a641",
+      "src/test/java/com/shop/elpsy/RedisTest.java": "f2a844a7ac2690a0a56be375f96ee4d068793d039cfe97c845aaf225569dede6",
+      "src/test/java/com/shop/elpsy/SecurityChainTest.java": "7f1a023da23e7160eaeb791deb0d0b4d43c57bc3f5b75e98e308f76e2e1df0d4",
+      "src/test/java/com/shop/elpsy/ThreadLocalTest.java": "47cb449a93d06bc19b4d56e9b4231c38890185cbc210feb71f1a0f55b6176532",
+      "src/test/java/com/shop/elpsy/config/DemoMigrationGuardTest.java": "07fed72044c188a289f4e20e0f5d8c93033c6c1a6822c6c4da6904d890a6dda0"
+    },
+    "manifestSha256": "1cb078360b99447680247e3e4db0ce29e57826a5eedb6b91c83aac74e8d2fabf"
+  },
+  "maven": {
+    "command": "mvn package; MYSQL/REDIS integration and migration-fixture flags enabled",
+    "total": 53,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "suites": [
+      {
+        "name": "com.shop.elpsy.AdminSessionServiceTest",
+        "tests": "8",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "com.shop.elpsy.CatalogIntegrationTest",
+        "tests": "7",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "com.shop.elpsy.CustomerIdentityIntegrationTest",
+        "tests": "6",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "com.shop.elpsy.InventoryIntegrationTest",
+        "tests": "11",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "com.shop.elpsy.JwtAuthenticationFilterTest",
+        "tests": "7",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "com.shop.elpsy.JwtTest",
+        "tests": "6",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "com.shop.elpsy.RedisTest",
+        "tests": "2",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "com.shop.elpsy.SecurityChainTest",
+        "tests": "2",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "com.shop.elpsy.ThreadLocalTest",
+        "tests": "1",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "com.shop.elpsy.config.DemoMigrationGuardTest",
+        "tests": "3",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      }
+    ],
+    "logSha256": "fb38b929b0778f255c9537c626eeb6b2ff2aff29ebbec40a141fa1c3f63c5ab9",
+    "firstRun": "CHECK exception mapping assertion and isolated trigger privilege failed; replaced trigger with real ledger actor-FK failure and verified MySQL constraint error codes, then full rerun passed"
+  },
+  "migrationUpgrade": {
+    "from": "previous V3 production JAR + real API fixture",
+    "to": "V4 package + production JAR",
+    "existingSkuPreserved": true,
+    "initialQuantity": 0,
+    "initialVersion": 0,
+    "fixtureSha256": "08b6819514f3c1bed06f44deaf1fcdaa616b461343b9ad4a1a1056870d400440",
+    "superPrivilegeOrTrustFunctionCreatorsRequired": false
+  },
+  "jar": {
+    "sha256": "78298e37ea1eac3e8c08f8f07d40e56f92f1b547be010199111d9f767505812e",
+    "bytes": 64254058
+  },
+  "http": {
+    "inventory": {
+      "passed": 27,
+      "checks": [
+        "新 SKU 真實零庫存與零版本",
+        "員工可讀空異動紀錄",
+        "匿名不能讀庫存明細",
+        "員工直接調整庫存403",
+        "調整缺少 CSRF 被拒絕",
+        "操作者不能由 body 指定",
+        "小數庫存拒絕而非截斷",
+        "負庫存操作409且沒有異動",
+        "店長可上架零庫存商品供瀏覽",
+        "零庫存公開 available=false",
+        "店長入庫201且前後數量版本完整",
+        "稽核操作者來自認證本人",
+        "相同操作重送200且僅一筆異動",
+        "同操作編號不同內容409",
+        "同操作編號不可套別的SKU",
+        "公開有庫存但不洩漏數量版本與停用款",
+        "舊庫存版本不能覆寫",
+        "損耗扣至零成功",
+        "扣至零後公開立即無庫存",
+        "歷史重送不還原舊庫存",
+        "異動紀錄不可透過API編輯",
+        "異動紀錄不可透過API刪除",
+        "異動分頁有上限",
+        "款式路徑不接受跨商品ID",
+        "商品封存成功",
+        "封存商品異動紀錄保留且禁止新調整",
+        "封存後仍可確認既有操作"
+      ],
+      "transport": "real loopback socket",
+      "syntheticProductsCreated": 1
+    },
+    "catalog": {
+      "passed": 21,
+      "checks": [
+        "匿名可讀公開列表且不導向登入",
+        "匿名不能讀商品後台",
+        "缺少 CSRF 的建立被拒絕",
+        "員工建立草稿與兩款 SKU",
+        "草稿不出現在公開詳情",
+        "草稿不出現在公開列表",
+        "穩定 permission code 隨身分 API 回傳",
+        "員工直接呼叫上架 API 403",
+        "小數金額拒絕而非截斷",
+        "不能由建立 body 指定上架狀態",
+        "全域 SKU 編碼不可重用",
+        "店長成功上架且版本遞增",
+        "公開只回啟用 SKU 與整數價格",
+        "公開投影不洩漏狀態版本或 SKU 編碼",
+        "上架後禁止直接編輯",
+        "店長下架後公開立即404",
+        "舊版本更新409不覆蓋新狀態",
+        "下架後員工能儲存草稿",
+        "員工封存草稿成功",
+        "封存後保留 SKU 且不可上架",
+        "公開分頁有上限"
+      ],
+      "transport": "real loopback socket",
+      "syntheticProductsCreated": 1
+    },
+    "customer": {
+      "passed": 21,
+      "checks": [
+        "匿名顧客本人 API 401",
+        "顧客登入缺 CSRF 403",
+        "顧客建立成功 201 與安全投影",
+        "相同帳號大小寫重複 409",
+        "拒絕註冊 role 注入",
+        "顧客 Cookie 登入成功",
+        "顧客獨立 HttpOnly Strict Cookie 與 rememberMe",
+        "顧客不可呼叫員工身分",
+        "顧客不可讀員工角色",
+        "查詢參數不能改變本人",
+        "PATCH 本人拒絕 id 注入",
+        "PATCH 本人暱稱成功",
+        "讀取本人更新已持久保存",
+        "舊會員 API 410",
+        "顧客四個 refresh 競爭僅一成功",
+        "舊顧客 access 失效",
+        "舊顧客 refresh 重播拒絕",
+        "舊顧客 token 登出不撤銷新 session",
+        "顧客寫入缺 CSRF 403",
+        "顧客登出清除本入口兩個 Cookie",
+        "顧客登出後本人 API 401"
+      ],
+      "syntheticAccountsCreated": 1
+    },
+    "staff": {
+      "passed": 20,
+      "checks": [
+        "匿名身分 API 401",
+        "缺少 CSRF 的登入 403",
+        "私有 ADMIN 登入成功",
+        "登入 Cookie HttpOnly／Strict，非記住登入沒有 Max-Age",
+        "身分 API 回本人與權限且不回密碼",
+        "店長可讀展示角色",
+        "同 URL 未授權 method 被拒絕",
+        "錯誤密碼 401",
+        "STAFF 可讀本人",
+        "STAFF 管理角色 API 403",
+        "記住登入有效期 15 分／7 天",
+        "登出該裝置失效",
+        "其他裝置仍可用",
+        "同 refresh 四個競爭請求僅一成功",
+        "refresh 後舊 access 401",
+        "舊 refresh 重播 401",
+        "舊 refresh 登出不撤銷新 session",
+        "寫入缺少 CSRF 403",
+        "有效登出清除兩個 Cookie",
+        "有效登出後不能讀本人"
+      ],
+      "database": "獨立 MySQL 8.4 demo",
+      "realRedis": true
+    }
+  },
+  "pairedFrontend": {
+    "build": "passed",
+    "browserTotal": 65
+  }
+}

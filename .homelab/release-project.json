@@ -1,0 +1,12 @@
+{
+  "project": "shop",
+  "repository": "shop_bak_ap",
+  "accepted_main": "997e5fbdfb4417933ca69961fd097fbcf62dd240",
+  "accepted_ci": 39040799891,
+  "source_paths": [
+    "src",
+    "pom.xml",
+    "config"
+  ],
+  "github_repository": "figura-api"
+}

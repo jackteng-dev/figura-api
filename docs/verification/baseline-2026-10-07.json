@@ -1,0 +1,152 @@
+{
+  "date": "2026-10-07",
+  "timezone": "Asia/Taipei",
+  "milestone": "0：隔離啟動與員工身分基準",
+  "repository": "Elpsy-Deng/shop_bak_ap",
+  "startingMain": "4cc5102e2b9311c28e276ae8c534bb211dffe03d",
+  "environment": {
+    "jdk": "21.0.12.1+1",
+    "javaRelease": 17,
+    "maven": "3.9.16",
+    "mysql": "8.4",
+    "redis": "7",
+    "db": "elpsy_shop_demo",
+    "loopback": true,
+    "productionCookieSecureVerifiedByUnitTests": true,
+    "httpDemoSecureFalse": true
+  },
+  "maven": {
+    "command": "SHOP_REDIS_INTEGRATION=true SHOP_REDIS_TEST_PORT=17379 mvn package",
+    "tests": 26,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "suites": [
+      {
+        "name": "com.shop.elpsy.AdminSessionServiceTest",
+        "tests": "8",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "com.shop.elpsy.JwtAuthenticationFilterTest",
+        "tests": "7",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "com.shop.elpsy.JwtTest",
+        "tests": "6",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "com.shop.elpsy.RedisTest",
+        "tests": "2",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "com.shop.elpsy.SecurityChainTest",
+        "tests": "2",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "com.shop.elpsy.ThreadLocalTest",
+        "tests": "1",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      }
+    ],
+    "jarSha256": "315e35bd6ad8d4c9d843c8b12b5f2ffb481ba9340b29e2d262c5bf88ad031ca5"
+  },
+  "http": {
+    "passed": 20,
+    "checks": [
+      "匿名身分 API 401",
+      "缺少 CSRF 的登入 403",
+      "私有 ADMIN 登入成功",
+      "登入 Cookie HttpOnly／Strict，非記住登入沒有 Max-Age",
+      "身分 API 回本人與權限且不回密碼",
+      "店長可讀展示角色",
+      "同 URL 未授權 method 被拒絕",
+      "錯誤密碼 401",
+      "STAFF 可讀本人",
+      "STAFF 管理角色 API 403",
+      "記住登入有效期 15 分／7 天",
+      "登出該裝置失效",
+      "其他裝置仍可用",
+      "同 refresh 四個競爭請求僅一成功",
+      "refresh 後舊 access 401",
+      "舊 refresh 重播 401",
+      "舊 refresh 登出不撤銷新 session",
+      "寫入缺少 CSRF 403",
+      "有效登出清除兩個 Cookie",
+      "有效登出後不能讀本人"
+    ],
+    "database": "獨立 MySQL 8.4 demo",
+    "realRedis": true
+  },
+  "mysqlState": {
+    "passed": 7,
+    "checks": [
+      "真實 MySQL 停用立即拒絕既有 access",
+      "真實 MySQL 停用立即拒絕 refresh",
+      "真實 MySQL 停用拒絕再次登入",
+      "真實 MySQL 全部撤權立即拒絕既有 access",
+      "真實 MySQL 全部撤權立即拒絕 refresh",
+      "真實 MySQL 單項撤權即時 403",
+      "單項撤權不影響其他身分權限"
+    ],
+    "restored": true
+  },
+  "setupChecks": [
+    "private env generation",
+    "exclusive create / no overwrite",
+    "file mode 0600",
+    "Python syntax",
+    "Compose config --quiet"
+  ],
+  "sourceSha256": {
+    ".env.example": "ce71dfbf410035ae2410a3718b85877154a15e67fefd54aaf4ff8585a22c7cf1",
+    ".gitignore": "448888340062f5eee8375a0e11d4f2743f4e19db9de6482404929ed2367f4349",
+    "docker-compose.demo.yml": "14252d71c342495a7dfdd9774534fac052b9cba184fc0ea06062e688984a08ea",
+    "pom.xml": "8369e3052a8e32cd4193b6b219f4373fa1aaf438ca41feacc931ef7fdfe33f60",
+    "scripts/demo-identity-schema.sql": "cb7e8e217c602ec5d31fe68042e3440a993d47d4afb39f979f05811cda2cfc9f",
+    "scripts/init_demo_env.py": "310e52e8d090d7b6c335b2ea16ae81cbd16c699f47479ee01b60c49d33058846",
+    "scripts/smoke_auth.py": "6681548cd588b0e530955e8e2d8cb45ebc51030b9e131c6f2f11be9402c26047",
+    "src/main/java/com/shop/elpsy/config/DemoAccountInitializer.java": "28f32148c38cbe9e096758a147b6cd58d992df83c987a972ed75fd7ea4a26bb8",
+    "src/main/java/com/shop/elpsy/controller/AdminUserController.java": "8b4310a6e08d57fd527c7e90889d0f2a1ea97d0d19adbd0cb0f29b0b33f10094",
+    "src/main/java/com/shop/elpsy/controller/AuthenticationController.java": "6ab742731f82aca240a4126b47fdbe680705a21fc60568bbf9fb3ead354f42c1",
+    "src/main/java/com/shop/elpsy/controller/UserController.java": "e2742f356053408034408229a576ba22f9fd2119d7f1716e8417ab8629bdd0fb",
+    "src/main/java/com/shop/elpsy/expection/GlobalExceptionHandler.java": "a930084ba4ac9483c81323ae53b1ddd9b22d49bfebdfaf600f692b61c6dd98c5",
+    "src/main/java/com/shop/elpsy/interceptors/LoginInterceptor.java": "98664e0b88d4b705c467a78f168b368307f117aed9aa0c376e6058f18e82de61",
+    "src/main/java/com/shop/elpsy/mapper/RoleMapper.java": "920858084114ce802c5eef8996cc04935644b1e7efbc918278d0775bdd232c37",
+    "src/main/java/com/shop/elpsy/service/AdminSessionService.java": "588475bb17d5d4237ddae52830386792fdd301b7566ffe95f72ea3d558d643a5",
+    "src/main/java/com/shop/elpsy/utils/JwtAuthenticationFilter.java": "6149a994825f063e6d2a2cc6ba9cbe15be9308fa5a188d52daca4a205530ed12",
+    "src/main/java/com/shop/elpsy/utils/JwtUtil.java": "9ea4b5be9f8834a5d683c5c3a1c54b934e594cc6823e710e23fa2962c07ac667",
+    "src/main/java/com/shop/elpsy/utils/SecurityConfig.java": "dd76fb5c4992027fa8532058c88cf55bad3678681d481e7ce5f5addc589523f2",
+    "src/main/resources/application.yml": "4b47b07f4a5185011e10fb2c66dd5355151a97c50cb80347d1cf3262345902c4",
+    "src/main/resources/com/shop/elpsy/mapper/RoleMapper.xml": "43d841ab214ea4be426b81e8c2a3958a148690211ff47353cf0340a3590ff811",
+    "src/test/java/com/shop/elpsy/AdminSessionServiceTest.java": "b9ba4aafa3a90f9a8c6ee4772045892a35c67cb299da922aef240da28fab935e",
+    "src/test/java/com/shop/elpsy/JwtAuthenticationFilterTest.java": "fdcb33f6b8e3a6265e15e83cdd29b6a88d36b46d293862993ebb3275b079e439",
+    "src/test/java/com/shop/elpsy/JwtTest.java": "e92520d501c951be314eef2194ab09373811bd135e072aa19070d76f49d1a641",
+    "src/test/java/com/shop/elpsy/RedisTest.java": "f2a844a7ac2690a0a56be375f96ee4d068793d039cfe97c845aaf225569dede6",
+    "src/test/java/com/shop/elpsy/SecurityChainTest.java": "be9c98a9b6e689bea6b34152ece888c326f1f12b9924214e1b06b3666eb52548"
+  },
+  "buildLogSha256": "27070f1f37141e139c07f2abd7dd25893698ec71d293e243ac356b0f93023b28",
+  "limits": [
+    "Identity demo only, 5 tables; not commerce migration",
+    "One pre-existing ThreadLocal demonstration included in Maven count",
+    "MinIO / original schema / HTTPS / payment / customer App not tested",
+    "No production deployment or load test"
+  ],
+  "cleanup": "Own verification Java / Vite preview / current isolated containers stopped and removed; no other project modifications"
+}

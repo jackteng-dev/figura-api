@@ -1,0 +1,40 @@
+name: elpsy-shop-demo
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?需私有 root 密碼}
+      MYSQL_DATABASE: elpsy_shop_demo
+      MYSQL_USER: shop_demo
+      MYSQL_PASSWORD: ${DB_PASSWORD:?需私有 demo DB 密碼}
+      TZ: Asia/Taipei
+    ports:
+      - "127.0.0.1:${MYSQL_DEMO_PORT:-13306}:3306"
+    volumes:
+      - mysql-demo-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "--silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:${REDIS_DEMO_PORT:-17379}:6379"
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+  seaweed:
+    image: chrislusf/seaweedfs:3.85@sha256:49312939c00c01e5ee6afbd7d728b18027821d3764c35a797a72acd4fdf3296a
+    profiles: [images]
+    environment:
+      NO_PROXY: "${NO_PROXY:-},127.0.0.1,localhost,seaweed"
+      no_proxy: "${NO_PROXY:-},127.0.0.1,localhost,seaweed"
+    command: [server, -dir=/data, -ip=seaweed, -ip.bind=0.0.0.0, -volume.max=12, -master.volumeSizeLimitMB=128, -filer, -s3, -s3.config=/etc/seaweedfs/s3.json]
+    ports:
+      - "127.0.0.1:${SEAWEED_S3_DEMO_PORT:-18333}:8333"
+    volumes:
+      - seaweed-demo-data:/data
+      - ./work/seaweed-s3.json:/etc/seaweedfs/s3.json:ro
+      - ./config/seaweed-filer.toml:/etc/seaweedfs/filer.toml:ro
+volumes:
+  mysql-demo-data:
+  seaweed-demo-data:

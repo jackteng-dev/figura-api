@@ -1,0 +1,734 @@
+{
+  "date": "2026-10-07",
+  "timezone": "Asia/Taipei",
+  "startingCommits": {
+    "backend": "9530d0e17bdc51252064a5ac2d5e9c9d0552c1b5",
+    "frontend": "89567148b0aedf35ead41fe4a1a25438eef205ab"
+  },
+  "environment": {
+    "java": "21 (release17)",
+    "mysql": "8.4",
+    "redis": "7",
+    "browser": "system Chromium with Playwright",
+    "services": "fresh dedicated disposable loopback demo only"
+  },
+  "artifacts": {
+    "jarSha256": "b06baf191cee80f059de0e1276d1e017ebe2a55e206ff97c2de500cad0e9f1f1",
+    "v8BaselineJarSha256": "ec287bb67cf8d502fcf46a6781585d59ecddcdb052784ea5c9f9690179b43a22",
+    "distTreeSha256": "27ff6819284fa03fdfa81c6f36bae75530ddec5f6284545918b9ef5fae097890",
+    "backendSourceTreeSha256": "213e9e3702e1c951cdd9c4e564b2570126f4ef088b9e06217e4556dbe59caeac",
+    "frontendSourceTreeSha256": "0b6a37b3468896ad810ca0ed163cca364bcc8f17fe12a7237cb74925782b3ced",
+    "treeHashMethod": "SHA256 sorted relative UTF-8 filenames, NUL, raw bytes, NUL; source excludes docs/private work/dependencies"
+  },
+  "maven": {
+    "command": "SHOP_MYSQL_INTEGRATION=true SHOP_REDIS_INTEGRATION=true SHOP_REDIS_TEST_PORT=17379 mvn package (trusted private demo env imported)",
+    "summary": {
+      "tests": 118,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 2
+    },
+    "suites": {
+      "com.shop.elpsy.JwtAuthenticationFilterTest": {
+        "tests": 7,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "com.shop.elpsy.SecurityChainTest": {
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "com.shop.elpsy.InventoryIntegrationTest": {
+        "tests": 11,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 1
+      },
+      "com.shop.elpsy.FulfillmentIntegrationTest": {
+        "tests": 14,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "com.shop.elpsy.PaymentIntegrationTest": {
+        "tests": 13,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "com.shop.elpsy.CatalogIntegrationTest": {
+        "tests": 7,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "com.shop.elpsy.RefundDisabledTest": {
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "com.shop.elpsy.JwtTest": {
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "com.shop.elpsy.RedisTest": {
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "com.shop.elpsy.CustomerIdentityIntegrationTest": {
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "com.shop.elpsy.MockPaymentGatewayTest": {
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "com.shop.elpsy.OrderIntegrationTest": {
+        "tests": 12,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "com.shop.elpsy.FulfillmentDisabledTest": {
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "com.shop.elpsy.ThreadLocalTest": {
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "com.shop.elpsy.AdminSessionServiceTest": {
+        "tests": 8,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "com.shop.elpsy.ShoppingIntegrationTest": {
+        "tests": 9,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 1
+      },
+      "com.shop.elpsy.config.DemoMigrationGuardTest": {
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "com.shop.elpsy.RefundIntegrationTest": {
+        "tests": 13,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "newCoverage": "13 real MySQL/Redis refund/review integration tests and1 default-disabled service unit",
+    "skippedReason": "Historical V3→V4 and V4→V5 markers not supplied; those upgrades not claimed as rerun."
+  },
+  "frontendBuild": {
+    "command": "npm run build",
+    "typeCheck": true,
+    "productionBuild": true,
+    "warnings": "Inherited template chunk/mixed imports/simplebar warnings retained"
+  },
+  "migration": {
+    "fromVersion": 8,
+    "toVersion": 9,
+    "fixtureCreatedBy": "Starting backend main9530d0e production V8 JAR via actual order/payment HTTP on fresh dedicated empty demo; own product unpublished",
+    "preserved": {
+      "paymentStatus": "PAID",
+      "orderVersion": 2,
+      "totalTwd": 2560,
+      "syntheticRecipientName": "合成收件人",
+      "paidAt": "2026-10-07T13:35:56.003963",
+      "physicalStock": 5,
+      "reservedStock": 0,
+      "paymentIntentStatus": "SUCCEEDED",
+      "fulfillmentStatus": "UNFULFILLED",
+      "trackingId": null,
+      "shippedAt": null,
+      "deliveredAt": null,
+      "refundEvents": 0,
+      "successfulMigrations": 9
+    },
+    "priorMigrationSha256": {
+      "V6__orders_and_stock_reservations.sql": "27a2af827c21efeeb5c84f96892c341d11c6a19f2c2e491f87be8f146e59744e",
+      "V2__customer_identity.sql": "4256ad11fa76d7dcd7721a1f10906b97acf8acfefe425104fd5bc3e589546156",
+      "V4__sku_inventory_and_adjustment_audit.sql": "c1d8ab39de57f3e8a6ab227f3f53136e7a1bef48d80d942864c5435028208402",
+      "V1__staff_identity.sql": "ee590b62cacc2a2590b537b6d47d81646b8bfb9d5710ec993b17b789d1cb9f86",
+      "V3__catalog_and_permissions.sql": "7781ebaa0ed1df0b2ebb1da072fb4b61642f1f40a1f1fd19e6234cddba963d63",
+      "V7__mock_payments_and_paid_orders.sql": "8f1fb37346da7bfa007204008067cd052a2ed0d4ed6c5e65f48a3f8a4658b367",
+      "V5__customer_cart_and_addresses.sql": "e8f21587a90a306ba402087ffea550787202fab0bcaae65b84d45b9387b2d2a7",
+      "V8__mock_fulfillment_and_staff_order_permissions.sql": "06b9f74a184b73a4c0d533dc49e7478ec7691d2e5bc95a319a77a17f6a6bd338"
+    },
+    "priorSqlByteIdentical": true
+  },
+  "http": {
+    "total": 210,
+    "suites": {
+      "refunds": {
+        "passed": 21,
+        "checks": [
+          "退款紀錄需要員工realm",
+          "普通員工可讀但不可退款",
+          "退款需要CSRF",
+          "金額與actor注入拒絕",
+          "空說明與小數版本拒絕",
+          "全額退款保持付款時間與快照",
+          "回補實體不動保留庫存",
+          "同ID重送不再回補",
+          "改內容与新退款拒絕",
+          "顧客退款安全投影且隔離",
+          "已退款不可出貨與通知不復活",
+          "退款紀錄禁止刪改",
+          "未處理review呈現",
+          "普通員工不可核對退款",
+          "晚到成功核對退款不復活或動庫存",
+          "核對重送保持一筆且原意圖保留",
+          "核對後新通知仍不動庫存",
+          "矛盾付款暫停出貨與主訂單退款",
+          "核對额外付款不回補且解除凍結",
+          "主付款同ID競爭只回補一次",
+          "退款狀態可篩選"
+        ]
+      },
+      "fulfillment": {
+        "passed": 25,
+        "checks": [
+          "匿名與顧客不能讀員工訂單",
+          "員工摘要分頁不回收件內容",
+          "一般員工可讀詳情與稽核但無寫入權限",
+          "出貨仍需要CSRF",
+          "顧客不能直接模擬出貨",
+          "伺服器拒絕actor與貨件編號注入",
+          "空說明與小數版次拒絕",
+          "未出貨不可先送達",
+          "實際出貨保持付款與快照並產生模擬貨件",
+          "出貨不再扣庫或改庫存版本",
+          "同出貨操作重送一筆紀錄",
+          "改說明與舊版次新操作衝突",
+          "送達保持同貨件付款與出貨時間",
+          "送達重送不新增稽核",
+          "歷史出貨重送回原操作與目前送達狀態",
+          "稽核由認證員工與前後版本保存",
+          "顧客配送投影不含內部說明或員工身份",
+          "別人不能讀本人配送與付款",
+          "履約稽核不能API刪改",
+          "非法篩選與分頁拒絕",
+          "待付款不可出貨",
+          "取消不可出貨",
+          "同ID不能套另一訂單且不留部分更新",
+          "相同出貨競爭只一次",
+          "重複付款通知不重設配送"
+        ]
+      },
+      "auth": {
+        "passed": 20,
+        "checks": [
+          "匿名身分 API 401",
+          "缺少 CSRF 的登入 403",
+          "私有 ADMIN 登入成功",
+          "登入 Cookie HttpOnly／Strict，非記住登入沒有 Max-Age",
+          "身分 API 回本人與權限且不回密碼",
+          "店長可讀展示角色",
+          "同 URL 未授權 method 被拒絕",
+          "錯誤密碼 401",
+          "STAFF 可讀本人",
+          "STAFF 管理角色 API 403",
+          "記住登入有效期 15 分／7 天",
+          "登出該裝置失效",
+          "其他裝置仍可用",
+          "同 refresh 四個競爭請求僅一成功",
+          "refresh 後舊 access 401",
+          "舊 refresh 重播 401",
+          "舊 refresh 登出不撤銷新 session",
+          "寫入缺少 CSRF 403",
+          "有效登出清除兩個 Cookie",
+          "有效登出後不能讀本人"
+        ],
+        "database": "獨立 MySQL 8.4 demo",
+        "realRedis": true
+      },
+      "customer": {
+        "passed": 21,
+        "checks": [
+          "匿名顧客本人 API 401",
+          "顧客登入缺 CSRF 403",
+          "顧客建立成功 201 與安全投影",
+          "相同帳號大小寫重複 409",
+          "拒絕註冊 role 注入",
+          "顧客 Cookie 登入成功",
+          "顧客獨立 HttpOnly Strict Cookie 與 rememberMe",
+          "顧客不可呼叫員工身分",
+          "顧客不可讀員工角色",
+          "查詢參數不能改變本人",
+          "PATCH 本人拒絕 id 注入",
+          "PATCH 本人暱稱成功",
+          "讀取本人更新已持久保存",
+          "舊會員 API 410",
+          "顧客四個 refresh 競爭僅一成功",
+          "舊顧客 access 失效",
+          "舊顧客 refresh 重播拒絕",
+          "舊顧客 token 登出不撤銷新 session",
+          "顧客寫入缺 CSRF 403",
+          "顧客登出清除本入口兩個 Cookie",
+          "顧客登出後本人 API 401"
+        ],
+        "syntheticAccountsCreated": 1
+      },
+      "catalog": {
+        "passed": 21,
+        "checks": [
+          "匿名可讀公開列表且不導向登入",
+          "匿名不能讀商品後台",
+          "缺少 CSRF 的建立被拒絕",
+          "員工建立草稿與兩款 SKU",
+          "草稿不出現在公開詳情",
+          "草稿不出現在公開列表",
+          "穩定 permission code 隨身分 API 回傳",
+          "員工直接呼叫上架 API 403",
+          "小數金額拒絕而非截斷",
+          "不能由建立 body 指定上架狀態",
+          "全域 SKU 編碼不可重用",
+          "店長成功上架且版本遞增",
+          "公開只回啟用 SKU 與整數價格",
+          "公開投影不洩漏狀態版本或 SKU 編碼",
+          "上架後禁止直接編輯",
+          "店長下架後公開立即404",
+          "舊版本更新409不覆蓋新狀態",
+          "下架後員工能儲存草稿",
+          "員工封存草稿成功",
+          "封存後保留 SKU 且不可上架",
+          "公開分頁有上限"
+        ],
+        "transport": "real loopback socket",
+        "syntheticProductsCreated": 1
+      },
+      "inventory": {
+        "passed": 27,
+        "checks": [
+          "新 SKU 真實零庫存與零版本",
+          "員工可讀空異動紀錄",
+          "匿名不能讀庫存明細",
+          "員工直接調整庫存403",
+          "調整缺少 CSRF 被拒絕",
+          "操作者不能由 body 指定",
+          "小數庫存拒絕而非截斷",
+          "負庫存操作409且沒有異動",
+          "店長可上架零庫存商品供瀏覽",
+          "零庫存公開 available=false",
+          "店長入庫201且前後數量版本完整",
+          "稽核操作者來自認證本人",
+          "相同操作重送200且僅一筆異動",
+          "同操作編號不同內容409",
+          "同操作編號不可套別的SKU",
+          "公開有庫存但不洩漏數量版本與停用款",
+          "舊庫存版本不能覆寫",
+          "損耗扣至零成功",
+          "扣至零後公開立即無庫存",
+          "歷史重送不還原舊庫存",
+          "異動紀錄不可透過API編輯",
+          "異動紀錄不可透過API刪除",
+          "異動分頁有上限",
+          "款式路徑不接受跨商品ID",
+          "商品封存成功",
+          "封存商品異動紀錄保留且禁止新調整",
+          "封存後仍可確認既有操作"
+        ],
+        "transport": "real loopback socket",
+        "syntheticProductsCreated": 1
+      },
+      "shopping": {
+        "passed": 28,
+        "checks": [
+          "匿名與員工不能取得顧客購物車",
+          "本人空購物車版本0",
+          "加入缺CSRF拒絕",
+          "真實加入與伺服器計價",
+          "購物車不保留庫存或新增稽核",
+          "第二顧客與query owner不能取得第一人的購物車",
+          "第二顧客不能移除第一人款式",
+          "偽造價格與owner欄位400",
+          "數量0小數與超上限400",
+          "大於當下庫存409且不改版本",
+          "同版本競爭只有一筆成功",
+          "重送舊版本不累加",
+          "下架保留可移除快照不洩漏草稿且不計價",
+          "下架禁止新增或更新數量",
+          "重上架按最新價格重算不採前端舊價格",
+          "缺貨標示與可用小計重新核對",
+          "舊版本移除拒絕",
+          "缺貨仍可本人移除",
+          "匿名與員工不能讀顧客地址",
+          "真實保存地址安全投影",
+          "第二人query不能取得地址",
+          "外人地址PUT與DELETE都是404",
+          "地址owner注入與無效郵遞區號400",
+          "地址更新持久保存",
+          "地址過期更新與刪除409",
+          "地址刪除缺CSRF403",
+          "本人刪除後不再顯示",
+          "刪除後不能重用ID繞過舊版本保護"
+        ],
+        "transport": "real loopback socket",
+        "syntheticAccountsCreated": 2
+      },
+      "orders": {
+        "passed": 24,
+        "checks": [
+          "匿名與員工不能取得顧客訂單",
+          "下單缺CSRF拒絕",
+          "owner與價格欄位注入拒絕",
+          "未核對的價格拒絕",
+          "外人地址不可下單",
+          "下單實際保存與伺服器價格快照",
+          "保留量與可售量分離且不扣實體庫存",
+          "成功下單清空本人購物車並增加版本",
+          "第二顧客訂單列表隔離",
+          "外人明確ID讀取取消皆404",
+          "遺失回應可用相同操作重送不再保留",
+          "相同編號不同内容拒絕",
+          "後台不能把庫存調低到保留量以下",
+          "取消舊版本先拒絕不釋放",
+          "刪除本人地址後訂單收件快照仍保存",
+          "本人取消釋放保留且實體不變",
+          "取消重送不重複釋放",
+          "取消後下單重送回目前終態不復活",
+          "分頁界限與非法ID拒絕",
+          "最後一件庫存競爭只能一人下單",
+          "失敗者車保留但顯示缺貨",
+          "公開商品依可售庫存顯示缺貨",
+          "釋放後公開商品恢復可售",
+          "同操作競爭回同一訂單且只保留一次"
+        ]
+      },
+      "payments": {
+        "passed": 23,
+        "checks": [
+          "付款建立只產生意圖不扣實體庫存",
+          "匿名與員工不能讀本人付款",
+          "外人已知訂單與付款ID仍不能讀或模擬",
+          "顧客模擬仍需要CSRF",
+          "付款建立與模擬不接受客戶端價格",
+          "同操作重送回同付款意圖",
+          "同訂單不允許第二筆進行中付款",
+          "錯誤簽章與過期時間不寫入",
+          "可信簽章仍核對金額與交易",
+          "通知未知欄位與小數拒絕",
+          "無Cookie無CSRF的真實簽章webhook完成付款",
+          "webhook回應不含收件與訂單內容",
+          "付款一次扣實體與保留量",
+          "訂單已付款與paidAt保存",
+          "同通知重送不重複扣庫",
+          "同事件不同結果衝突",
+          "新事件重複成功與晚到失敗不降級",
+          "已付款不可直接取消",
+          "失敗付款保留庫存且可建立新意圖",
+          "失敗後新付款可成功且只扣一件",
+          "取消後成功通知記待核對不復活",
+          "同通知競爭都成功且只扣一次",
+          "普通公開商品仍可售"
+        ]
+      }
+    },
+    "transport": "real final production JAR loopback sockets, actual Cookie/CSRF and independently signed HMAC"
+  },
+  "browser": {
+    "total": 159,
+    "suites": {
+      "refunds": {
+        "passed": 19,
+        "checks": [
+          "店長可讀退款規則與可執行動作",
+          "真正退款後遺失回應保留同操作",
+          "未知結果凍結說明與選單",
+          "退款ACK後讀取失敗不再顯示重試或出貨",
+          "同UUID重試只回補一次",
+          "退款完成禁止出貨和再次退款",
+          "顧客看到本人退款金額時間且無員工內部說明",
+          "重整保存退款稽核且文字不執行HTML",
+          "待核對付款禁止主退款與出貨",
+          "核對遺失回應重試同ID且庫存不回補",
+          "核對解除凍結而原訂單維持付款",
+          "舊版本退款拒絕且保存未送說明",
+          "已出貨重讀後不提供訂單退款",
+          "一般員工唯讀退款稽核",
+          "員工直接退款與核對仍403",
+          "可篩選已退款訂單",
+          "390px員工退款紀錄無橫向溢出",
+          "390px顧客退款狀態無橫向溢出",
+          "未捕捉JS錯誤為0"
+        ],
+        "errors": []
+      },
+      "fulfillment": {
+        "passed": 17,
+        "checks": [
+          "權限動態菜單接到真實訂單管理",
+          "店長取得收件快照與模擬說明",
+          "真正出貨成功後遺失回應保留同操作",
+          "未知回應凍結說明與列表選擇",
+          "同出貨ID重試一筆紀錄且無再扣庫",
+          "顧客讀到模擬出貨時間貨件且沒有內部說明",
+          "送達遺失回應重試同ID仍只有兩筆稽核",
+          "顧客重新核對更新送達而付款保持PAID",
+          "重整保存配送與稽核且不執行說明HTML",
+          "舊版次衝突保存未送說明且沒有覆寫",
+          "重讀最新出貨狀態保留說明",
+          "伺服器篩選已出貨排除已送達",
+          "一般員工可查看卻没有出貨送達按鈕",
+          "一般員工繞過畫面POST仍403",
+          "390px員工訂單與稽核無橫向溢出",
+          "390px顧客配送進度無橫向溢出",
+          "未捕捉JS錯誤為0"
+        ],
+        "errors": []
+      },
+      "payments": {
+        "passed": 14,
+        "checks": [
+          "訂單提供明確不實收的模擬付款面板",
+          "真實建立付款後遺失回應保留同操作",
+          "重試建立只保留一筆付款與訂單金額",
+          "失敗顯示且保留訂單庫存",
+          "失敗後新意圖有不同ID且仍同金額",
+          "成功結果遺失時後端已付款只扣一次",
+          "相同通知重試不重複扣庫",
+          "已付款沒有直接取消與新付款按鈕",
+          "重整付款與時間仍保存",
+          "別人不能取得付款面板",
+          "390px付款狀態與歷史無溢出",
+          "取消後晚到成功可見待核對且無新增扣庫",
+          "待核對不提供新付款",
+          "未捕捉JS錯誤為0"
+        ],
+        "errors": []
+      },
+      "orders": {
+        "passed": 18,
+        "checks": [
+          "匿名訂單導向顧客登入",
+          "本人初始訂單空白",
+          "下單前顯示伺服器總額與本人收件地址",
+          "390px確認下單表單無橫向溢出",
+          "真實提交後遺失回應保留重試操作",
+          "未知結果凍結地址與購物車修改",
+          "同操作重試只一筆訂單與保留2件",
+          "訂單顯示快照金額收件資訊與30分鐘期限",
+          "收件人HTML以文字呈現",
+          "下單清空購物車",
+          "第二顧客不能讀取第一人訂單",
+          "訂單重整仍保存",
+          "刪除地址與改草稿價格後訂單快照不变",
+          "訂單品項文字有可讀深色樣式",
+          "390px訂單無橫向溢出",
+          "顧客取消釋放庫存與移除取消按鈕",
+          "真實排程釋放逾時庫存",
+          "未捕捉JS錯誤為0"
+        ],
+        "errors": []
+      },
+      "shopping": {
+        "passed": 26,
+        "checks": [
+          "匿名購物車導向顧客登入",
+          "匿名地址導向顧客登入",
+          "本人初始購物車空白",
+          "商品詳情真實加入購物車",
+          "購物車伺服器數量與價格",
+          "第二顧客不能讀第一人的非空購物車",
+          "購物車重整仍保存",
+          "購物車更新數量與小計",
+          "另一頁變更後衝突不覆寫且保留未送數量",
+          "明確重讀競爭後目前數量",
+          "購物車提交後回應遺失阻止盲目重送",
+          "回應遺失後核對實際已保存數量",
+          "下架款式不計價不洩漏草稿且仍可移除",
+          "重上架購物車讀最新價格",
+          "缺貨明確顯示與排除小計",
+          "390px購物車無橫向溢出",
+          "本人移除缺貨款式",
+          "加入回應遺失阻止再次累加",
+          "第二顧客不能讀第一人的已保存地址",
+          "收件地址真實保存且文字不執行HTML",
+          "地址重整仍保存",
+          "地址競爭拒絕並保留此頁輸入",
+          "地址重新核對後可編輯保存",
+          "390px地址無橫向溢出",
+          "本人地址刪除成功",
+          "未捕捉JS錯誤為0"
+        ],
+        "errors": []
+      },
+      "inventory": {
+        "passed": 20,
+        "checks": [
+          "真實新 SKU 後台從零庫存開始",
+          "空異動紀錄有明確狀態",
+          "零庫存公開顯示暫無庫存且款式不可選",
+          "店長表單入庫與真實資料庫持久化",
+          "異動顯示本人與前後數量",
+          "重整仍有庫存與異動紀錄",
+          "入庫後公開立即有庫存且款式可選",
+          "公開列表反映真實庫存狀態",
+          "390px 庫存列表無橫向溢出",
+          "版本衝突不覆寫且保留調整說明",
+          "重新核對取得最新庫存版本",
+          "負庫存被拒絕且異動沒有增加",
+          "損耗扣至零與異動新增成功",
+          "稽核說明以文字顯示不執行 HTML",
+          "扣至零後公開狀態立即更新",
+          "390px 款式庫存狀態無橫向溢出",
+          "回應遺失後重試沿用操作編號且只入庫一次",
+          "員工可查異動但沒有庫存調整表單",
+          "員工繞過UI直接POST仍403",
+          "無未捕捉 JavaScript 錯誤"
+        ],
+        "errors": [],
+        "syntheticProductsCreated": 1
+      },
+      "catalog": {
+        "passed": 19,
+        "checks": [
+          "匿名商品空列表有明確狀態",
+          "員工真實表單儲存多 SKU 商品草稿",
+          "員工沒有上架按鈕而有權限說明",
+          "員工繞過按鈕直接上架仍403",
+          "匿名草稿詳情不洩漏商品內容",
+          "草稿與 SKU 重整仍由資料庫讀回",
+          "店長可以上架真實商品",
+          "已上架商品表單禁止直接修改",
+          "匿名公開列表連到真實商品詳情",
+          "公開只顯示啟用款式與新台幣價格",
+          "商品說明以文字顯示不執行 HTML",
+          "390px 商品詳情無橫向溢出",
+          "390px 商品列表無橫向溢出",
+          "下架後公開頁立即顯示不可用",
+          "版本衝突顯示錯誤並保留未儲存表單",
+          "重新載入可恢復最新版本",
+          "封存保留商品但不能再上架",
+          "員工版面快速切換顧客入口正常",
+          "無未捕捉 JavaScript 錯誤"
+        ],
+        "errors": [],
+        "syntheticProductsCreated": 1
+      },
+      "customer": {
+        "passed": 17,
+        "checks": [
+          "公開商店入口可讀且不導向員工登入",
+          "顧客未知路由留商店並顯示找不到頁面",
+          "匿名會員中心導向顧客登入",
+          "顧客註冊真實 API 成功",
+          "註冊後不保留密碼欄位",
+          "錯誤密碼保留顧客頁並顯示錯誤",
+          "顧客登入會員中心回本人",
+          "顧客獨立 Cookie HttpOnly 且 Strict",
+          "暱稱儲存後重整仍保留",
+          "會員暱稱以文字顯示不執行 HTML",
+          "顧客 access 缺失以一次專屬 refresh 恢復",
+          "同一瀏覽器顧客與員工身分可共存",
+          "登出顧客不登出員工",
+          "員工登入不能代替顧客身分",
+          "localStorage／sessionStorage 不存顧客密碼",
+          "390px 顧客註冊頁無橫向溢出",
+          "正式 build 無未捕捉 JavaScript 錯誤"
+        ],
+        "errors": [],
+        "syntheticAccountsCreated": 1
+      },
+      "staff": {
+        "passed": 9,
+        "checks": [
+          "正式登入頁可顯示且沒有預填私有帳密",
+          "ADMIN 真實 Cookie／CSRF 登入",
+          "工作首頁不顯示假營收",
+          "ADMIN 動態權限路由可載入",
+          "缺少 access Cookie 可經 refresh 恢復",
+          "切換 STAFF 不殘留 ADMIN 動態菜單",
+          "STAFF 不能進入 ADMIN 占位路由",
+          "390px 登入頁可讀且無橫向溢出",
+          "正式 build 無未捕捉 JavaScript 錯誤"
+        ],
+        "errors": []
+      }
+    },
+    "transport": "final production dist → final JAR → actual isolated MySQL/Redis; no mocked writes/owner/prices",
+    "lostResponses": "Abort after actual ORDER_REFUND and REVIEW_REFUND success; same UUID retry; exactly one event and correct stock. Also abort GET after refund ACK: no new retry/ship, then manual reload.",
+    "visualReview": "Inspected 390px staff/customer refund screenshots; readable without horizontal overflow",
+    "regression": "All prior140 browser checks rerun on final artifacts; 0 uncaught JS errors"
+  },
+  "database": {
+    "invalidStockRanges": 0,
+    "stockReservationSumMismatches": 0,
+    "invalidStockEventHistories": 0,
+    "settledSkuPhysicalLedgerMismatches": 0,
+    "paidOrderPaymentMismatches": 0,
+    "paymentOwnerAmountMismatches": 0,
+    "paidNotificationLedgerMismatches": 0,
+    "pendingSyntheticOrders": 0,
+    "successfulMigrations": 9,
+    "fulfillmentProgressLedgerMismatches": 0,
+    "fulfillmentForUnpaidOrders": 0,
+    "invalidFulfillmentEventSnapshots": 0,
+    "refundOrderLedgerMismatches": 0,
+    "refundPaymentEvidenceMismatches": 0
+  },
+  "security": {
+    "permissions": [
+      "orders.refunds.read",
+      "orders.refund.mock",
+      "orders.review.mock"
+    ],
+    "demoStaff": "read-only refund/review audit",
+    "demoAdmin": "plus order/refund review mutation",
+    "actor": "enabled employee identity and live grants locked before owner/order/payment/sorted inventory",
+    "customer": "own nullable Order/Payment refund projection; no actor/note or original notification history",
+    "mockDefaultEnabled": false
+  },
+  "atomicity": [
+    "ORDER_REFUND inventory quantity+/reserved unchanged/version+, unique RETURN, REFUNDED/closedAt/order version and refund audit in same transaction.",
+    "Refund audit fault rolls back state and returned stock; same request retries once. REVIEW_REFUND audit fault rolls back resolution and order version.",
+    "Concurrent identical refunds replay; shipment/refund race has exactly one winner; cross-actor/order request collisions roll back losing order.",
+    "Capacity overflow409 leaves original order and no refund/RETURN; audited correction permits same operation retry.",
+    "Cancelled late success review refund does not resurrect or restock. Extra contradictory payment freezes primary refund and fulfillment, then review refund permits them without stock change.",
+    "Pending review resolution permits a fresh payment before original expiry, never settlement of the refunded review intent. Shipped primary cannot refund, but extra review can be resolved to resume mock delivery.",
+    "Original SUCCEEDED/REVIEW_REQUIRED payment states and signed notification records remain unchanged; nullable safe refund projection reports later action."
+  ],
+  "correctedDuringVerification": [
+    "Old inventory rollback test used nonexistent actor to reach ledger FK. New actor guard rejects401 before write; revised test verifies401 and valid-actor ledger fault500, complete stock/version/audit rollback and same-ID retry.",
+    "Final review found inventory product-first vs refund actor-first audit FK lock inversion; inventory now locks live actor/grants first, DB actor username; added competing inventory/refund integration test. All final suites and V8→V9 rerun on a new dedicated empty demo.",
+    "Added existing DB notification created_at to MockPaymentEvent mapping after compilation showed it was absent; final complete package passed.",
+    "Final UI clears stale fulfillment flags after refund ACK and blocks new operations if subsequent GET fails; dedicated real browser failure check passed.",
+    "Scratch SQL verifier updated for REFUNDED/RETURN and review version gaps; corrected replacement syntax before successful final consistency checks."
+  ],
+  "limitations": [
+    "Only full mock refunds of paid unshipped orders and mock reviewed payment refunds; no real transfers/messages.",
+    "Shipped returns, partial refunds, fees, outbox, SeaweedFS upload, full RBAC editor, deployment and App remain separate.",
+    "No load/capacity guarantee; original notification list is not paginated/rate limited; operational/PII retention policies remain pending.",
+    "Pending request payload lives only in component memory; reload reads current order/refund history, no offline queue.",
+    "DB admins can edit data; not tamper-proof. Physical adjustment arithmetic verified on settled SKUs because inherited cart tests SQL-edit their own synthetic stock."
+  ],
+  "cleanup": {
+    "ownJavaAndPreviewStopped": true,
+    "ownDedicatedDemoContainersAndVolumeRemoved": true,
+    "privateEnvAndRawLogsIgnored": true,
+    "otherProjectsUntouched": true
+  }
+}

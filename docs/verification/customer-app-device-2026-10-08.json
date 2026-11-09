@@ -1,0 +1,317 @@
+{
+  "date": "2026-10-08",
+  "timezone": "Asia/Taipei",
+  "milestone": "Android native acceptance and test APK; iOS and merchant signing preparation",
+  "version": "0.1.1+2",
+  "sourceBaselines": {
+    "app": "a0418a1ed31b3614808ee87f0841003a144f3d21",
+    "backend": "92213e2ca8332ebfe7bbe50774b4ce5bcaa2badb",
+    "vue": "1e282a8a713657e684523cec4ab09d23ed4df9c5"
+  },
+  "sourceFileSha256": {
+    "lib/main.dart": "b56ea26815184d7c7b76835b7afdffa98ab4f4bcb1da679ccd2a13083b74ee29",
+    "lib/app.dart": "178b931feb71b264ddf528d4d39a52b2bbbdaba270fe54145b98fbd9f0f10492",
+    "lib/core/api.dart": "5e0df1bb52f984b003ab77a18b4c6176dd1ed10410b4822320888170329776f2",
+    "lib/core/storage.dart": "ea27b62b2fe7ebb986b5b3da3f3a500fee773f3d95199b837bd51842e5630487",
+    "pubspec.yaml": "708c538d7fda70eb75fe22af675be5552d5d47c615208b02e315d7531f04db94",
+    "pubspec.lock": "7621828f729f5e9f8fd0f07836002bb3a25f60202e035f0fb790e835c3015ed7",
+    "android/app/build.gradle.kts": "890faaf2349592ff5dfe5caad5893a4ba17e65aefe52d156e74e1e257933ead4",
+    "android/gradle.properties": "6e5e96726f64cc14513ee661c5fbb75cdf8b7142a1d707f4656da3dbe0dfec7d",
+    "android/app/src/main/AndroidManifest.xml": "93ebcaa04a7d95812845d5ef83bf86d826ac4f20112a2d841abb68db36d457b2",
+    "ios/Runner/Keychain.entitlements": "ec86a342f58433197db9032e9f226fb3150c4962bb78d010074828fc37320160",
+    "ios/Runner.xcodeproj/project.pbxproj": "ce63ca44a430dce27715e1751fdd4dc9415b29d306a71adfbd505e0af64de057",
+    "test_support/native_main.dart": "36b2fcc4b7e2000f0fb10524d8eb5a8c8c8631ce65e5b13691b07b0229b2a0f6",
+    "scripts/verify_android.py": "c1cd1db99493504b4c0f99ca5ec3f2c02dbf82d383c4f145239f71f3da306bc4"
+  },
+  "artifacts": {
+    "debug": {
+      "sha256": "9640f0c154a99f80a02d2e9d670f36777ec2dec73ae9bd168cd5be3d1cab3b43",
+      "bytes": 180300193,
+      "signature": "development debug certificate verified by apksigner",
+      "applicationId": "com.elpsy.elpsy_shop",
+      "versionName": "0.1.1",
+      "versionCode": 2,
+      "minimumApi": 24,
+      "targetApi": 36,
+      "runtimeAbis": [
+        "armeabi-v7a",
+        "arm64-v8a",
+        "x86_64"
+      ],
+      "apiBase": "http://127.0.0.1:9090/ELPSY/api/",
+      "privateFixtureCredentialsEmbedded": false
+    },
+    "release": {
+      "sha256": "c6f2d84064c888e66ae7631bc701a7f7a98ef3eaffac297cd11c6d8d739a3ec2",
+      "bytes": 61812666,
+      "unsignedVerified": true,
+      "installable": false,
+      "compileOnlyApiBase": "https://shop.example/ELPSY/api/",
+      "deployed": false
+    }
+  },
+  "android": {
+    "apiLevel": 29,
+    "abi": "x86_64",
+    "device": "emulator-5554",
+    "physicalDevice": false,
+    "emulatorVersion": "37.2.12.0",
+    "kvmAvailable": false,
+    "nativeStorage": "flutter_secure_storage 11.2.0; AndroidKeyStore protected encrypted preferences",
+    "corePhasesPassed": 4,
+    "coreSafeChecksAndPhaseGroups": 10,
+    "coreChecks": [
+      "device booted",
+      "production artifact differs from test probe",
+      "native phase seed",
+      "native phase resume",
+      "native phase version",
+      "native phase resolve",
+      "exact UUID/body replay reached backend twice, without another order command",
+      "committed response and replay identify the same single order",
+      "unknown versioned cart write was sent only once",
+      "native preference files contain no plaintext session/device credentials"
+    ],
+    "countingNote": "Native subchecks collapsed into completed phase groups; no inflated individual-test total",
+    "manualProductionUi": {
+      "passed": 8,
+      "checks": [
+        "production account UI displays expected synthetic owner after APK upgrade",
+        "background return keeps original process",
+        "default-renderer cold start restores expected customer account",
+        "default-renderer HOME and foreground return redraw the expected account",
+        "production logout UI shows sign-in screen",
+        "secure refresh entry absent before any cold restore while device identity remains",
+        "after logout, production process restart renders anonymous catalog without restoring account",
+        "after logout and cold restart, tapping account renders sign-in screen"
+      ],
+      "method": "ADB gestures and screenshots reviewed visually; automated UiAutomator blocked by System UI ANR/timeout",
+      "screenshotsSha256": {
+        "account": "a0f3234a8b06a358c1944bdf8c51217a17f3da6231f06d4807afc5c5f1af31f8",
+        "backgroundBlank": "c52468334222ab6baf0dde29370b936df95c6457a40f8df22e7324ce86bb0a59",
+        "defaultColdAccount": "77e243bfb35804982ce2aa1cb6b5177367a0c67ef8e7bd8366b5a030e32f18dd",
+        "defaultBackgroundAccount": "6230f91976f5be8176d719287dfb86c2dd7933d158d38d258620c8fccc1e8b02",
+        "logout": "5ac03366971871b772062833085882d45112accdd52406fed7642d354450b983",
+        "signedOutColdCatalog": "703e48c0c8146f294dfa5bf7431cf20465b1910c01510e30445000f2afd2849d",
+        "signedOutColdLogin": "4f070b67633a48851a1dbe7241eda269327f1d04600b475ce413825813684e25"
+      }
+    },
+    "automatedUiPassed": false,
+    "automatedUiIssues": [
+      "System UI ANR dialog blocked account selector",
+      "UiAutomator dump timed out after 45 seconds"
+    ],
+    "manualUiCompletedOnSameArtifact": true,
+    "renderingObservations": [
+      "Skia override on the software emulator returned a blank Flutter surface after HOME/resume; UI scenario not passed",
+      "UiAutomator account checks failed on System UI ANR and dump timeout; no automated UI pass claimed",
+      "Default renderer also showed a transient blank surface immediately after HOME; later screenshot confirmed recovered account. Emulator timing is not phone performance evidence"
+    ],
+    "debugCoreRendererOverride": "Skia",
+    "manualFinalUiRenderer": "default",
+    "faults": {
+      "committedOrderResponseLost": true,
+      "exactUuidBodySameOrderReplay": true,
+      "committedVersionedCartResponseLost": true,
+      "noBlindVersionedReplay": true,
+      "read503AfterWriteAcknowledgement": true
+    },
+    "environmentRecovery": [
+      "Initial insufficient AVD partition space; removed only own generated intermediate cache",
+      "Initial parallel build exhausted 8 GiB cgroup; emulator was terminated",
+      "Gradle heap capped at 2 GiB and workers at 2; builds and device validation run sequentially",
+      "Software System UI ANR and Skia black surface recorded; default renderer recovered account after transient resume blank"
+    ]
+  },
+  "flutter": {
+    "version": "3.47.6",
+    "dart": "3.13.5",
+    "analyzeIssues": 0,
+    "formatChangedFiles": 0,
+    "unitWidgetPassed": 13,
+    "liveSocketSkippedByDefault": 1,
+    "liveSocketRunThisMilestone": false,
+    "historicalFullClientAndBrowserEvidence": "customer-app-2026-10-07.json"
+  },
+  "signingPreparation": {
+    "partialConfigRejected": true,
+    "configuredSigningPathVerifiedWithDisposableDebugKey": true,
+    "merchantProductionKeyProvided": false,
+    "keyPropertiesRemovedAfterTest": true,
+    "releaseRestoredToUnsigned": true
+  },
+  "ios": {
+    "plistValid": true,
+    "ownAppKeychainEntitlementConfiguredForBuilds": [
+      "Debug",
+      "Profile",
+      "Release"
+    ],
+    "deploymentTarget": "15.0",
+    "atsRelaxed": false,
+    "built": false,
+    "physicalDeviceTested": false,
+    "appleTeamProvided": false
+  },
+  "backend": {
+    "fullMaven": {
+      "tests": 262,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 2,
+      "passed": 260
+    },
+    "nativeHttp": {
+      "passed": 19,
+      "checks": [
+        "public native catalog and batch",
+        "native profile, cart and address ignore injected owner query",
+        "address isolation",
+        "native versioned cart rejects stale update",
+        "stock placement replay same order and cleared cart",
+        "own order isolation",
+        "orders native mock payment replay",
+        "stock payment consumes only reserved inventory",
+        "native stock safe delivery progress",
+        "native preorder placement separate replay",
+        "preorders native mock payment replay",
+        "native safe preorder allocated delivered projection",
+        "preorder supply never decrements stock",
+        "native preorder cancel replay terminal",
+        "native refund and return options remain safe",
+        "website still needs csrf even with native bearer",
+        "native token not accepted by employee endpoint",
+        "old access revoked after rotation",
+        "native logout revokes access"
+      ],
+      "synthetic": true,
+      "transport": "loopback real socket"
+    },
+    "databaseInvariants": {
+      "noDuplicateStockRequest": 0,
+      "noDuplicateStockReserve": 0,
+      "quotaOutOfBounds": 0,
+      "heldVsPendingMismatch": 0,
+      "heldVsLedgerMismatch": 0,
+      "orderVsLedgerMismatch": 0,
+      "eventOwnerBatchOrQuantityMismatch": 0,
+      "orderEventCountMismatch": 0,
+      "eventOutboxMismatch": 0,
+      "notificationParentMismatch": 0,
+      "preorderUnsafeNotificationPayload": 0,
+      "preorderAccidentallyInStockOrders": 0,
+      "preorderStockEvents": 0,
+      "physicalInventoryInvalid": 0,
+      "physicalReservationMismatch": 0,
+      "sentWithoutMockReceipt": 0,
+      "ordinaryStaffWriteGrant": 0,
+      "paidVsOrdersMismatch": 0,
+      "paidVsLedgerMismatch": 0,
+      "orderPaidVsLedgerMismatch": 0,
+      "paymentOrderOwnerAmountMismatch": 0,
+      "paidOrderSettlementMismatch": 0,
+      "paymentQuotaReferenceMismatch": 0,
+      "refundAmountOrderVersionMismatch": 0,
+      "refundWithoutOriginalEvidence": 0,
+      "refundOutboxMismatch": 0,
+      "successOutboxMismatch": 0,
+      "unresolvedReviewAfterFixtureCleanup": 0,
+      "refundedOrderAuditMismatch": 0,
+      "supplyOutOfBounds": 0,
+      "receivedVsLedgerMismatch": 0,
+      "allocatedVsLedgerMismatch": 0,
+      "shippedVsLedgerMismatch": 0,
+      "allocatedVsOrdersMismatch": 0,
+      "shippedVsOrdersMismatch": 0,
+      "fulfillmentOrderReferenceMismatch": 0,
+      "fulfillmentOutboxMismatch": 0,
+      "fulfillmentActionCountMismatch": 0,
+      "fulfillmentTrackingMismatch": 0
+    },
+    "schemaHistoryCount": 18,
+    "migrationV1toV18Unchanged": true,
+    "sourceCodeChanged": false
+  },
+  "vue": {
+    "productionBuildPassed": true,
+    "typecheck": "vue-tsc",
+    "sourceCodeChanged": false
+  },
+  "scope": {
+    "name": "elpsy-app-device-20261008",
+    "freshDisposableDbOnly": true,
+    "mockProvidersOnly": true,
+    "noRealMessagesPaymentsShipping": true,
+    "ownProductArchived": 1,
+    "ownBatchClosed": 1
+  },
+  "delivery": {
+    "channel": "private GitHub draft release",
+    "tag": "v0.1.1-device-test",
+    "artifactName": "ELPSY-Shop-0.1.1-android-test.apk",
+    "requiresUserComputerDemoAndUsbReverse": true,
+    "formalDeployment": false,
+    "uploadCompleted": true,
+    "originalCloudUpload": {
+      "completed": false,
+      "error": "uploads.github.com HTTP401 Bad credentials",
+      "originalTestedArtifactSha256": "9640f0c154a99f80a02d2e9d670f36777ec2dec73ae9bd168cd5be3d1cab3b43"
+    },
+    "githubActions": {
+      "runId": 37712548885,
+      "url": "https://github.com/Elpsy-Deng/Shop_app/actions/runs/37712548885",
+      "sourceCommit": "02beccc7facebfce377b5ec76d749bbbadc32484",
+      "conclusion": "success",
+      "formatAnalyzeTestBuildPassed": true,
+      "privateDraftAttachmentStepPassed": true,
+      "artifactId": 11522941397,
+      "artifactExpiresAt": "2026-10-22T01:29:47Z"
+    },
+    "deliveredDebug": {
+      "sha256": "4ac11c22115f0c073b91247f8fe1e42e26aef18fa1a07b0bc447f320899f06d1",
+      "bytes": 180297725,
+      "versionName": "0.1.1",
+      "versionCode": 2,
+      "applicationId": "com.elpsy.elpsy_shop",
+      "developmentSignatureVerified": true,
+      "downloadMatchesServerDigest": true,
+      "sha256SumsFileVerified": true,
+      "runtimeAbis": [
+        "armeabi-v7a",
+        "arm64-v8a",
+        "x86_64"
+      ],
+      "deviceTested": false,
+      "sourceCommit": "02beccc7facebfce377b5ec76d749bbbadc32484",
+      "runUrl": "https://github.com/Elpsy-Deng/Shop_app/actions/runs/37712548885",
+      "draftReleaseUrl": "https://github.com/Elpsy-Deng/Shop_app/releases/tag/untagged-2e7d99bc1f7c451ca04d",
+      "signatureCertificateSha256": "723948ce4ca00710b1d6d8cbd078961440bfb1a73450827db1e53a1e20293544",
+      "differentFromOriginalCloudSigningCertificateVerified": true
+    },
+    "draftReleaseUrl": "https://github.com/Elpsy-Deng/Shop_app/releases/tag/untagged-2e7d99bc1f7c451ca04d",
+    "shaDistinction": "artifacts.debug is the emulator-tested cloud binary; delivery.deliveredDebug is the new CI-built/download-verified binary, not device-tested",
+    "releaseId": 406308377
+  },
+  "remaining": [
+    "Android physical-device, default-renderer performance and hardware-backed storage validation",
+    "macOS Xcode iOS compile/Keychain/simulator/physical-device validation",
+    "Merchant signing credentials and store accounts",
+    "Production HTTPS domain, real providers and operational validation"
+  ],
+  "cleanup": {
+    "scope": "elpsy-app-device-20261008",
+    "ownedApiStopped": true,
+    "ownedContainerCountRemoved": 3,
+    "ownedVolumeCountRemoved": 2,
+    "ownedNetworkRemoved": true,
+    "portsClosed": {
+      "23306": true,
+      "27379": true,
+      "28333": true,
+      "29092": true,
+      "29102": true
+    },
+    "emulatorPreviouslyStopped": true,
+    "originalDatabaseUntouched": true
+  }
+}

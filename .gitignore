@@ -1,0 +1,49 @@
+# 忽略 Maven 產生的 target 目錄
+/target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+# 忽略 IntelliJ IDEA 設定
+/.idea/
+/.idea/workspace.xml
+/.idea/shelf/
+/.idea/dataSources/
+/.idea/dataSources.local.xml
+/.idea/httpRequests/
+
+# 允許 IntelliJ 共享的設定檔案
+!.idea/misc.xml
+!.idea/modules.xml
+!.idea/jarRepositories.xml
+
+# 忽略 Eclipse 設定
+.project
+.classpath
+.settings/
+
+# 忽略 NetBeans 設定
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+# 忽略 Gradle 設定
+/.gradle/
+/build/
+
+# 忽略 VS Code 設定
+.vscode/
+
+# 忽略 OS 產生的垃圾文件
+.DS_Store
+Thumbs.db
+
+# 私有設定、測試資料與工具
+/work/
+.env
+.env.*
+!.env.example
+**/__pycache__/
+*.py[cod]

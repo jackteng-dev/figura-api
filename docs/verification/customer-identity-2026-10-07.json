@@ -1,0 +1,182 @@
+{
+  "date": "2026-10-07",
+  "timezone": "Asia/Taipei",
+  "milestone": "1A: customer identity and own display-name isolation",
+  "repository": "Elpsy-Deng/shop_bak_ap",
+  "startingMain": "3312aa8edef212bf21e5d50dc0ffbfa02f1e6fe4",
+  "environment": {
+    "jdk": "21.0.12.1+1",
+    "javaRelease": 17,
+    "maven": "3.9.16",
+    "mysql": "8.4",
+    "redis": "7",
+    "db": "elpsy_shop_demo",
+    "loopback": true,
+    "httpCookieSecure": false
+  },
+  "maven": {
+    "command": "SHOP_MYSQL_INTEGRATION=true SHOP_REDIS_INTEGRATION=true SHOP_REDIS_TEST_PORT=17379 mvn package",
+    "tests": 35,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "suites": [
+      {
+        "name": "com.shop.elpsy.AdminSessionServiceTest",
+        "tests": "8",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "com.shop.elpsy.CustomerIdentityIntegrationTest",
+        "tests": "6",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "com.shop.elpsy.JwtAuthenticationFilterTest",
+        "tests": "7",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "com.shop.elpsy.JwtTest",
+        "tests": "6",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "com.shop.elpsy.RedisTest",
+        "tests": "2",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "com.shop.elpsy.SecurityChainTest",
+        "tests": "2",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "com.shop.elpsy.ThreadLocalTest",
+        "tests": "1",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "com.shop.elpsy.config.DemoMigrationGuardTest",
+        "tests": "3",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      }
+    ],
+    "jarSha256": "c28d7de73361bc2a7ead8bd9eb2cf60ea830ba7e2d274937fe7accd60dfcf491"
+  },
+  "migration": {
+    "versions": [
+      1,
+      2
+    ],
+    "success": true,
+    "staffAccounts": 2,
+    "syntheticSmokeCustomersObserved": 3,
+    "mavenCustomerFixturesCleaned": true,
+    "repeatStartupValidated": true,
+    "guardScope": "3 unit tests with mocked metadata; original DB not migrated",
+    "warning": "Flyway9.22 reports MySQL8.4 newer than supported8.0; actual two migrations and repeat startup passed"
+  },
+  "httpCustomer": {
+    "passed": 21,
+    "checks": [
+      "匿名顧客本人 API 401",
+      "顧客登入缺 CSRF 403",
+      "顧客建立成功 201 與安全投影",
+      "相同帳號大小寫重複 409",
+      "拒絕註冊 role 注入",
+      "顧客 Cookie 登入成功",
+      "顧客獨立 HttpOnly Strict Cookie 與 rememberMe",
+      "顧客不可呼叫員工身分",
+      "顧客不可讀員工角色",
+      "查詢參數不能改變本人",
+      "PATCH 本人拒絕 id 注入",
+      "PATCH 本人暱稱成功",
+      "讀取本人更新已持久保存",
+      "舊會員 API 410",
+      "顧客四個 refresh 競爭僅一成功",
+      "舊顧客 access 失效",
+      "舊顧客 refresh 重播拒絕",
+      "舊顧客 token 登出不撤銷新 session",
+      "顧客寫入缺 CSRF 403",
+      "顧客登出清除本入口兩個 Cookie",
+      "顧客登出後本人 API 401"
+    ],
+    "syntheticAccountsCreated": 1
+  },
+  "httpStaff": {
+    "passed": 20,
+    "checks": [
+      "匿名身分 API 401",
+      "缺少 CSRF 的登入 403",
+      "私有 ADMIN 登入成功",
+      "登入 Cookie HttpOnly／Strict，非記住登入沒有 Max-Age",
+      "身分 API 回本人與權限且不回密碼",
+      "店長可讀展示角色",
+      "同 URL 未授權 method 被拒絕",
+      "錯誤密碼 401",
+      "STAFF 可讀本人",
+      "STAFF 管理角色 API 403",
+      "記住登入有效期 15 分／7 天",
+      "登出該裝置失效",
+      "其他裝置仍可用",
+      "同 refresh 四個競爭請求僅一成功",
+      "refresh 後舊 access 401",
+      "舊 refresh 重播 401",
+      "舊 refresh 登出不撤銷新 session",
+      "寫入缺少 CSRF 403",
+      "有效登出清除兩個 Cookie",
+      "有效登出後不能讀本人"
+    ],
+    "database": "獨立 MySQL 8.4 demo",
+    "realRedis": true
+  },
+  "sourceSha256": {
+    "pom.xml": "6e277029f041002cc39e03ee4e9cb066f1cc87894e4e6db31e7f4a41f30e83e5",
+    "scripts/smoke_customer.py": "f88833fe9684dc5ec411ae54464d9cd2d88eb516f11d46ae6469266e23506772",
+    "src/main/java/com/shop/elpsy/config/DemoMigrationGuard.java": "936cf3c81e05b524d3b8ab1fb6221e3f663e3c3a38ab6f1ec1c3f5f7e14234ff",
+    "src/main/java/com/shop/elpsy/controller/CustomerController.java": "3a54abcb46c264bed92cb99c38aa48c8f76d097ea7f61503a87bacf6132f910a",
+    "src/main/java/com/shop/elpsy/dto/CustomerPayloads.java": "fe5f767532fa9f29bc04ea59e46f5bb823ea018e3ff92af072f86b804378c64b",
+    "src/main/java/com/shop/elpsy/expection/GlobalExceptionHandler.java": "d8618d6a3bfb2f6e41740d9a6a828a9c51e4c82b771a69950fbb10159bc71c73",
+    "src/main/java/com/shop/elpsy/mapper/CustomerMapper.java": "0e5b7b46b01d3324b32056593fcd3834e39b8a4dcf2f5cc7ad80315f946d019b",
+    "src/main/java/com/shop/elpsy/pojo/Customer.java": "6b4d160c19666ad9361e49aa15b9b9a8e85a2f41818fd7c834c5c862a226dad2",
+    "src/main/java/com/shop/elpsy/pojo/CustomerPrincipal.java": "44fb342020518cf1bbe27ea9b6ed69402ccee1236af24375104e2f6549a6ff1a",
+    "src/main/java/com/shop/elpsy/service/AdminSessionService.java": "88335a9bb9045dd2669f25057f288a0e7a537c2365c0f6fa7719c393c534b7c4",
+    "src/main/java/com/shop/elpsy/service/CustomerSessionService.java": "8d2506dcbf5994708049998cb8135eb40b95956729faa7b850b3f1034b0f7190",
+    "src/main/java/com/shop/elpsy/utils/JwtAuthenticationFilter.java": "d3668386814e4c8bfd911aa772512446a5b2dd66b907406b7f2ccf33f56077ad",
+    "src/main/java/com/shop/elpsy/utils/SecurityConfig.java": "45d52e5ecd5edee31e808cc1a7474d384aebf3f0e3e287a96b4d1a4a0199f404",
+    "src/main/resources/application-demo.yml": "a4b63285006eabc628b6ebeecd306be34eeca0e22117f47410e0766372b37046",
+    "src/main/resources/application.yml": "258225394a59c1f2366e9d00d4ba96e9ab7816e4472e21d25f60082c19c30cb3",
+    "src/main/resources/db/demo-migration/V1__staff_identity.sql": "ee590b62cacc2a2590b537b6d47d81646b8bfb9d5710ec993b17b789d1cb9f86",
+    "src/main/resources/db/demo-migration/V2__customer_identity.sql": "4256ad11fa76d7dcd7721a1f10906b97acf8acfefe425104fd5bc3e589546156",
+    "src/test/java/com/shop/elpsy/AdminSessionServiceTest.java": "ba8fa2af0935cc547cfcee6d70f62a6a598c1ec52b53aeb5e9e08ad128d9f8ac",
+    "src/test/java/com/shop/elpsy/CustomerIdentityIntegrationTest.java": "da1ec753cd12f122f38f6b28ddab22a563d2df7a59a035e9e7e7fde0b59c9508",
+    "src/test/java/com/shop/elpsy/JwtAuthenticationFilterTest.java": "61614b540b3b850c301e35788b29a46e3e9b9de93b54de5acb3ad21dd963a5f6",
+    "src/test/java/com/shop/elpsy/SecurityChainTest.java": "7f1a023da23e7160eaeb791deb0d0b4d43c57bc3f5b75e98e308f76e2e1df0d4",
+    "src/test/java/com/shop/elpsy/config/DemoMigrationGuardTest.java": "07fed72044c188a289f4e20e0f5d8c93033c6c1a6822c6c4da6904d890a6dda0"
+  },
+  "buildLogSha256": "70e3167e1fa60f95c335c484e169d48c508c36d61142b898019c0123728a93ec",
+  "limits": [
+    "customer profile scope = displayName only",
+    "email verification/reset/rate limiting/commerce/App/HTTPS not tested or completed",
+    "26 prior tests include 1 ThreadLocal example",
+    "no original DB migration / automatic baseline / clean"
+  ],
+  "cleanup": "Own milestone Java/preview/labelled containers removed after verification; no other repositories changed"
+}

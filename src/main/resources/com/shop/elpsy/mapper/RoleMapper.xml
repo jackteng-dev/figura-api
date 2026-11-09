@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTO Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.elpsy.mapper.RoleMapper">
+    <resultMap id="RoleWithPermissionsMap" type="com.shop.elpsy.pojo.Role">
+        <id property="id" column="id"/>
+        <result property="name" column="name"/>
+        <result property="description" column="description"/>
+        <collection property="permission" ofType="com.shop.elpsy.pojo.Permission">
+            <id property="id" column="permission_id"/>
+            <result property="name" column="permission_name"/>
+            <result property="description" column="permission_description"/>
+            <result property="parentId" column="parent_id"/>
+            <result property="level" column="level"/>
+            <result property="url" column="url"/>
+            <result property="method" column="method"/>
+            <result property="code" column="code"/>
+            <result property="adminRouter" column="admin_router"/>
+        </collection>
+    </resultMap>
+
+    <select id="getAllRolePermission" resultMap="RoleWithPermissionsMap">
+        SELECT
+            role.id,
+            role.name,
+            role.description,
+            permission.id AS permission_id,
+            permission.name AS permission_name,
+            permission.description AS permission_description,
+            permission.parent_id,
+            permission.level,
+            permission.url,
+            permission.method,
+            permission.code,
+            permission.admin_router
+        FROM
+            role
+                Left JOIN role_permission ON role.id = role_permission.role_id
+                Left JOIN permissions_backend permission ON role_permission.permission_id = permission.id
+    </select>
+
+
+</mapper>
