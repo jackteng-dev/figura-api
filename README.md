@@ -2,15 +2,16 @@
 
 *A shared commerce API for a figure and collectibles shop, serving web and Flutter clients.*
 
-Figura 是公仔／收藏品單店的後端作品，原名 ELPSY Shop，介面仍沿用舊名稱。
+Figura 是公仔／收藏品單店的後端作品（原名 ELPSY Shop）。
 本倉庫提供 [網路商店與員工後台](https://github.com/jackteng-dev/figura-web)、[Flutter 顧客 App](https://github.com/jackteng-dev/figura-app) 共用的 API，支援顧客購物與店員管理商品、庫存及訂單。
 以現貨交易與整筆預購為範圍，處理重複請求、庫存競爭及付款結果不確定時的狀態核對；付款、配送與通知皆為模擬。
 
 ## 展示
 
-- [公開唯讀商店展示](https://swaggyserver.tail5b604b.ts.net:8443/demos/shop/)：目前沒有商品，僅供查看頁面，不提供交易操作。
-- [作品展示入口](https://swaggyserver.tail5b604b.ts.net:8443/)：可從入口進入商店唯讀頁。
-- 員工管理與完整寫入流程不在公開展示範圍，可依下方步驟建立自己的隔離環境。
+- [線上沙盒 figura.jackteng.dev](https://figura.jackteng.dev)：可實際瀏覽商品、加入購物車、下單並模擬付款，也能用示範帳號進入員工後台（`/admin/login`）處理出貨與退貨。資料皆為虛構，每天 04:00（台北時間）自動重置。
+  - 顧客：`demo_customer` / `figura-demo-customer`（也可自行註冊）
+  - 店長：`shop_admin` / `figura-demo-admin`；員工：`shop_staff` / `figura-demo-staff`
+- 沙盒與正式部署使用相同版本；為了讓每位訪客都能使用，停用員工／角色異動與商品圖片上傳。
 
 ## 主要功能
 
