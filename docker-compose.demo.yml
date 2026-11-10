@@ -1,4 +1,4 @@
-name: elpsy-shop-demo
+name: figura-shop-demo
 services:
   mysql:
     image: mysql:8.4

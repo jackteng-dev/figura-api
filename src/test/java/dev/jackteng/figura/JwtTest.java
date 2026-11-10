@@ -24,8 +24,17 @@ class JwtTest {
         assertFalse(new JwtUtil(secret + "other", true).validate(jwt.genAccessToken(Map.of()), "access"));
         assertFalse(jwt.validate("bad", "access")); assertFalse(jwt.validate(null, "access"));
     }
+    @Test void issuesFiguraAndAcceptsLegacyIssuer() {
+        assertEquals("figura", JWT.decode(jwt.genAccessToken(Map.of())).getIssuer());
+        String legacy = JWT.create().withIssuer("elpsy-shop").withClaim("claims", Map.of("token_type", "access"))
+                .withExpiresAt(Instant.now().plusSeconds(60)).sign(Algorithm.HMAC256(secret));
+        assertTrue(jwt.validate(legacy, "access"));
+        String other = JWT.create().withIssuer("someone-else").withClaim("claims", Map.of("token_type", "access"))
+                .withExpiresAt(Instant.now().plusSeconds(60)).sign(Algorithm.HMAC256(secret));
+        assertFalse(jwt.validate(other, "access"));
+    }
     @Test void rejectsExpiredToken() {
-        String expired = JWT.create().withIssuer("elpsy-shop").withClaim("claims", Map.of("token_type", "access"))
+        String expired = JWT.create().withIssuer("figura").withClaim("claims", Map.of("token_type", "access"))
                 .withExpiresAt(Instant.now().minusSeconds(1)).sign(Algorithm.HMAC256(secret));
         assertFalse(jwt.validate(expired, "access"));
     }

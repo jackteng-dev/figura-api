@@ -15,5 +15,5 @@ os.chmod(p,0o600)
 if values['SHOP_IMAGES_BUCKET']!='figura-images':raise SystemExit('Dedicated demo bucket must be figura-images')
 config=root/'work/seaweed-s3.json'
 if not config.exists():
- with os.fdopen(os.open(config,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600),'w') as f:json.dump({'identities':[{'name':'elpsy-shop-demo','credentials':[{'accessKey':values['SHOP_IMAGES_ACCESS_KEY'],'secretKey':values['SHOP_IMAGES_SECRET_KEY']}],'actions':[a+':figura-images' for a in ['Admin','Read','Write','List']]}]},f)
+ with os.fdopen(os.open(config,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600),'w') as f:json.dump({'identities':[{'name':'figura-shop-demo','credentials':[{'accessKey':values['SHOP_IMAGES_ACCESS_KEY'],'secretKey':values['SHOP_IMAGES_SECRET_KEY']}],'actions':[a+':figura-images' for a in ['Admin','Read','Write','List']]}]},f)
 print('Missing private image settings/config added if needed; existing values preserved')

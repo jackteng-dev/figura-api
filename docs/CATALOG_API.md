@@ -20,7 +20,7 @@
 ```json
 {
   "title": "收藏公仔",
-  "brand": "ELPSY",
+  "brand": "Figura",
   "category": "公仔",
   "description": "商品文字說明",
   "expectedVersion": 0,

@@ -1,4 +1,4 @@
-# ELPSY Shop 後端交接
+# Figura（原 ELPSY Shop） 後端交接
 
 ## 2026-11-08：自動更新端到端驗證（ELPSY Shop（API））
 

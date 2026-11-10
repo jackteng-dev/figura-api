@@ -1,4 +1,4 @@
-# ELPSY Shop 工作規則
+# Figura（原 ELPSY Shop） 工作規則
 
 本倉庫是正式維護的 A 版。產品方向：公仔／收藏品單店，現貨交易完成後再加預購，最後接顧客 App。前後端分別是 Shop_back（Vue／TypeScript）與 shop_bak_ap（Spring Boot／MyBatis）；各自 main、交接、測試與提交。B 版 ELPSY_Shop-WEB／AP（master）僅作唯讀參考。本次工作只涉及本作品，不改發呆亭、Atlas、日日選物或展示平台。
 
