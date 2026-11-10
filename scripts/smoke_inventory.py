@@ -21,7 +21,7 @@ def login(admin):
 admin,at=login(True);staff,st=login(False);anon=client();suffix=uuid.uuid4().hex[:16];product_id=None
 def operation(version,delta,reason):return dict(requestId=str(uuid.uuid4()),expectedVersion=version,delta=delta,reason=reason,note='HTTP 庫存演練')
 try:
-    body=dict(title='HTTP 庫存商品 '+suffix,brand='Figura',category='公仔',description='庫存合成資料',expectedVersion=0,skus=[dict(code='STOCK-'+suffix,label='標準款',priceTwd=1280,enabled=True),dict(code='STOCK-OFF-'+suffix,label='停用款',priceTwd=1880,enabled=False)])
+    body=dict(title='HTTP 庫存商品 '+suffix,brand='ELPSY',category='公仔',description='庫存合成資料',expectedVersion=0,skus=[dict(code='STOCK-'+suffix,label='標準款',priceTwd=1280,enabled=True),dict(code='STOCK-OFF-'+suffix,label='停用款',priceTwd=1880,enabled=False)])
     status,result=req(staff,'/admin/products','POST',body,st);assert status==201;product=result['data'];product_id=product['id'];sku=next(s for s in product['skus'] if s['enabled']);other=next(s for s in product['skus'] if not s['enabled']);base='/admin/products/'+product_id;path=base+'/skus/'+sku['id']+'/inventory';adjust=path+'/adjustments'
     check('新 SKU 真實零庫存與零版本',req(staff,path)[1]['data']['quantity']==0 and req(staff,path)[1]['data']['version']==0)
     check('員工可讀空異動紀錄',req(staff,adjust)[1]['data']['total']==0)

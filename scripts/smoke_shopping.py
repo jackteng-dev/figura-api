@@ -30,7 +30,7 @@ def cart(c):return c.req('/customer/cart')[1]['data']
 admin=Client();assert admin.req('/admin/login','POST',dict(username='shop_admin',password=os.environ['DEMO_ADMIN_PASSWORD'],deviceId=str(uuid.uuid4())),form=True)[0]==200
 a=customer();b=customer();anon=Client();product=None
 try:
-    r=admin.req('/admin/products','POST',dict(title='HTTP cart '+uuid.uuid4().hex,brand='Figura',category='公仔',description='合成購物車資料',expectedVersion=0,skus=[dict(code='HTTP-CART-'+uuid.uuid4().hex,label='標準款',priceTwd=1280,enabled=True)]));assert r[0]==201;product=r[1]['data'];path='/admin/products/'+product['id'];sku=product['skus'][0]['id'];item='/customer/cart/items/'+sku;inventory=path+'/skus/'+sku+'/inventory'
+    r=admin.req('/admin/products','POST',dict(title='HTTP cart '+uuid.uuid4().hex,brand='ELPSY',category='公仔',description='合成購物車資料',expectedVersion=0,skus=[dict(code='HTTP-CART-'+uuid.uuid4().hex,label='標準款',priceTwd=1280,enabled=True)]));assert r[0]==201;product=r[1]['data'];path='/admin/products/'+product['id'];sku=product['skus'][0]['id'];item='/customer/cart/items/'+sku;inventory=path+'/skus/'+sku+'/inventory'
     assert admin.req(inventory+'/adjustments','POST',dict(requestId=str(uuid.uuid4()),expectedVersion=0,delta=10,reason='RESTOCK',note='合成入庫'))[0]==201
     product=admin.req(path+'/publication','PATCH',dict(expectedVersion=0,published=True))[1]['data']
     check('匿名與員工不能取得顧客購物車',anon.req('/customer/cart')[0]==401 and admin.req('/customer/cart')[0]==401)

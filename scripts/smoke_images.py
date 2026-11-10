@@ -25,7 +25,7 @@ def login(admin):
     return c,token(c)
 def write(product):return {k:copy.deepcopy(product[k]) for k in ['title','brand','category','description','skus']} | {'expectedVersion':product['version']}
 admin,at=login(True);staff,st=login(False);anon=client();suffix=uuid.uuid4().hex[:16]
-body=dict(title='HTTP 收藏品 '+suffix,brand='Figura',category='公仔',description='真實 HTTP 驗證資料',expectedVersion=0,skus=[dict(code='HTTP-'+suffix,label='標準款',priceTwd=1280,enabled=True),dict(code='HTTP-OFF-'+suffix,label='停用款',priceTwd=1880,enabled=False)])
+body=dict(title='HTTP 收藏品 '+suffix,brand='ELPSY',category='公仔',description='真實 HTTP 驗證資料',expectedVersion=0,skus=[dict(code='HTTP-'+suffix,label='標準款',priceTwd=1280,enabled=True),dict(code='HTTP-OFF-'+suffix,label='停用款',priceTwd=1880,enabled=False)])
 product_id=None
 
 import struct,zlib,hashlib,concurrent.futures
@@ -33,7 +33,7 @@ def png(color):
     def chunk(t,b):return struct.pack('>I',len(b))+t+b+struct.pack('>I',zlib.crc32(t+b)&0xffffffff)
     return b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',24,18,8,6,0,0,0))+chunk(b'IDAT',zlib.compress((b'\0'+bytes(color)*24)*18))+chunk(b'IEND',b'')
 def upload(c,path,fields,data,csrf=None,mime='image/png'):
-    boundary='figura-'+uuid.uuid4().hex;out=[]
+    boundary='elpsy-'+uuid.uuid4().hex;out=[]
     for k,v in fields.items():out.append(('--'+boundary+'\r\nContent-Disposition: form-data; name="'+k+'"\r\n\r\n'+str(v)+'\r\n').encode())
     out.extend([('--'+boundary+'\r\nContent-Disposition: form-data; name="file"; filename="../../image.svg"\r\nContent-Type: '+mime+'\r\n\r\n').encode(),data,('\r\n--'+boundary+'--\r\n').encode()]);headers={'Content-Type':'multipart/form-data; boundary='+boundary}
     if csrf:headers['X-XSRF-TOKEN']=csrf
