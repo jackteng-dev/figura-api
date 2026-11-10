@@ -25,15 +25,17 @@ public class JwtUtil {
             throw new IllegalArgumentException("JWT_SECRET 必須提供至少 32 bytes 的私有隨機金鑰");
         algorithm = Algorithm.HMAC256(secret); cookieSecure = secure;
     }
+    /** Issuer for new tokens; tokens from before the Figura rename ("elpsy-shop") stay valid until they expire. */
+    static final String ISSUER = "figura", LEGACY_ISSUER = "elpsy-shop";
     public String genAccessToken(Map<String, Object> claims) { return generate(claims, "access", ACCESS_LIFETIME); }
     public String genRefreshToken(Map<String, Object> claims) { return generate(claims, "refresh", REFRESH_LIFETIME); }
     private String generate(Map<String, Object> claims, String type, Duration lifetime) {
         var payload = new HashMap<>(claims); payload.put("token_type", type);
-        return JWT.create().withIssuer("elpsy-shop").withClaim("claims", payload).withIssuedAt(Instant.now())
+        return JWT.create().withIssuer(ISSUER).withClaim("claims", payload).withIssuedAt(Instant.now())
                 .withExpiresAt(Instant.now().plus(lifetime)).sign(algorithm);
     }
     public Map<String, Object> parseToken(String token) {
-        return JWT.require(algorithm).withIssuer("elpsy-shop").build().verify(token).getClaim("claims").asMap();
+        return JWT.require(algorithm).withIssuer(ISSUER, LEGACY_ISSUER).build().verify(token).getClaim("claims").asMap();
     }
     public boolean validate(String token, String type) {
         try { return type.equals(parseToken(token).get("token_type")); } catch (RuntimeException e) { return false; }

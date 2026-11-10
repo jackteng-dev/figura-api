@@ -32,7 +32,7 @@ def customer():
     return c
 
 def fixture(capacity=3,seconds=86400):
-    r=admin.req('/admin/products','POST',dict(title='Preorder order HTTP '+uuid.uuid4().hex,brand='ELPSY',category='公仔',description='Synthetic',expectedVersion=0,skus=[dict(code='PO-'+uuid.uuid4().hex,label='限定款',priceTwd=1280,enabled=True)]));assert r[0]==201;p=r[1]['data'];products.append(p['id'])
+    r=admin.req('/admin/products','POST',dict(title='Preorder order HTTP '+uuid.uuid4().hex,brand='Figura',category='公仔',description='Synthetic',expectedVersion=0,skus=[dict(code='PO-'+uuid.uuid4().hex,label='限定款',priceTwd=1280,enabled=True)]));assert r[0]==201;p=r[1]['data'];products.append(p['id'])
     p=admin.req('/admin/products/'+p['id']+'/publication','PATCH',dict(expectedVersion=p['version'],published=True))[1]['data']
     now=dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).replace(microsecond=0)
     r=admin.req('/admin/preorders','POST',dict(productId=p['id'],skuId=p['skus'][0]['id'],name='Order batch '+uuid.uuid4().hex,description='<script>plain text</script>',priceTwd=1800,capacity=capacity,deadlineAt=(now+dt.timedelta(seconds=seconds)).isoformat(),arrivalFrom=(now+dt.timedelta(days=30)).date().isoformat(),arrivalTo=(now+dt.timedelta(days=40)).date().isoformat(),expectedVersion=0,requestId=str(uuid.uuid4()),note='Synthetic order fixture'));assert r[0]==201;b=r[1]['data']['current'];batches.append(b['id'])

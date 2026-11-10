@@ -30,7 +30,7 @@ def cart(c):return c.req('/customer/cart')[1]['data']
 admin=Client();assert admin.req('/admin/login','POST',dict(username='shop_admin',password=os.environ['DEMO_ADMIN_PASSWORD'],deviceId=str(uuid.uuid4())),form=True)[0]==200
 products=[];members=[]
 def fixture(stock):
-    r=admin.req('/admin/products','POST',dict(title='HTTP order '+uuid.uuid4().hex,brand='ELPSY',category='公仔',description='合成訂單資料',expectedVersion=0,skus=[dict(code='HTTP-ORDER-'+uuid.uuid4().hex,label='標準款',priceTwd=1280,enabled=True)]));assert r[0]==201
+    r=admin.req('/admin/products','POST',dict(title='HTTP order '+uuid.uuid4().hex,brand='Figura',category='公仔',description='合成訂單資料',expectedVersion=0,skus=[dict(code='HTTP-ORDER-'+uuid.uuid4().hex,label='標準款',priceTwd=1280,enabled=True)]));assert r[0]==201
     product=r[1]['data'];products.append(product);pp='/admin/products/'+product['id'];sku=product['skus'][0]['id'];inv=pp+'/skus/'+sku+'/inventory'
     assert admin.req(inv+'/adjustments','POST',dict(requestId=str(uuid.uuid4()),expectedVersion=0,delta=stock,reason='RESTOCK',note='合成訂單入庫'))[0]==201
     assert admin.req(pp+'/publication','PATCH',dict(expectedVersion=0,published=True))[0]==200

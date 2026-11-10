@@ -1,4 +1,4 @@
-# ELPSY Shop 開發進度
+# Figura（原 ELPSY Shop） 開發進度
 
 產品主線：公仔／收藏品單店現貨網站 → 整筆付款預購MVP → 顧客App。此頁只列目前狀態；歷史里程碑證據留docs/verification，各輪詳情見[HANDOFF](HANDOFF.md)。
 

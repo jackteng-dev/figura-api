@@ -46,7 +46,7 @@ class PreorderBatchIntegrationTest {
         return new Client(c.csrf(),List.of(c.cookies().get(0),cookie(r,"accessToken"),cookie(r,"refreshToken")));
     }
     private Map<String,Object> sku(String code,boolean enabled){return new HashMap<>(Map.of("code",code,"label","初回限定款","priceTwd",1280,"enabled",enabled));}
-    private Map<String,Object> product(List<Map<String,Object>> skus){return new HashMap<>(Map.of("title","integration collection "+UUID.randomUUID(),"brand","ELPSY","category","公仔","description","<script>資料是文字</script>","expectedVersion",0,"skus",skus));}
+    private Map<String,Object> product(List<Map<String,Object>> skus){return new HashMap<>(Map.of("title","integration collection "+UUID.randomUUID(),"brand","Figura","category","公仔","description","<script>資料是文字</script>","expectedVersion",0,"skus",skus));}
     private String code(){return "TEST-"+UUID.randomUUID();}
     private JsonNode create(Client c,Map<String,Object> input) throws Exception{var r=call(c,"POST","/admin/products",input);assertEquals(201,r.getResponse().getStatus(),r.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8));var p=data(r);ids.add(p.path("id").asText());return p;}
     private Map<String,Object> write(JsonNode p){return new HashMap<>(Map.of("title",p.path("title").asText(),"brand",p.path("brand").asText(),"category",p.path("category").asText(),"description",p.path("description").asText(),"expectedVersion",p.path("version").asInt(),"skus",json.convertValue(p.path("skus"),List.class)));}

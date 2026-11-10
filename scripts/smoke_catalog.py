@@ -25,7 +25,7 @@ def login(admin):
     return c,token(c)
 def write(product):return {k:copy.deepcopy(product[k]) for k in ['title','brand','category','description','skus']} | {'expectedVersion':product['version']}
 admin,at=login(True);staff,st=login(False);anon=client();suffix=uuid.uuid4().hex[:16]
-body=dict(title='HTTP 收藏品 '+suffix,brand='ELPSY',category='公仔',description='真實 HTTP 驗證資料',expectedVersion=0,skus=[dict(code='HTTP-'+suffix,label='標準款',priceTwd=1280,enabled=True),dict(code='HTTP-OFF-'+suffix,label='停用款',priceTwd=1880,enabled=False)])
+body=dict(title='HTTP 收藏品 '+suffix,brand='Figura',category='公仔',description='真實 HTTP 驗證資料',expectedVersion=0,skus=[dict(code='HTTP-'+suffix,label='標準款',priceTwd=1280,enabled=True),dict(code='HTTP-OFF-'+suffix,label='停用款',priceTwd=1880,enabled=False)])
 product_id=None
 try:
     check('匿名可讀公開列表且不導向登入',req(anon,'/catalog/products')[0]==200)

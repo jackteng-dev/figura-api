@@ -24,7 +24,7 @@ def login(admin):
     return c
 admin=login(True);staff=login(False);anon=Client();products=[];batches=[]
 def product():
-    b=dict(title='Preorder HTTP '+uuid.uuid4().hex,brand='ELPSY',category='公仔',description='合成預購商品',expectedVersion=0,skus=[dict(code='PRE-'+uuid.uuid4().hex,label='限定款',priceTwd=1280,enabled=True),dict(code='OFF-'+uuid.uuid4().hex,label='停用款',priceTwd=1800,enabled=False)])
+    b=dict(title='Preorder HTTP '+uuid.uuid4().hex,brand='Figura',category='公仔',description='合成預購商品',expectedVersion=0,skus=[dict(code='PRE-'+uuid.uuid4().hex,label='限定款',priceTwd=1280,enabled=True),dict(code='OFF-'+uuid.uuid4().hex,label='停用款',priceTwd=1800,enabled=False)])
     r=admin.req('/admin/products','POST',b);assert r[0]==201;v=r[1]['data'];products.append(v['id']);return v
 def write(p,seconds=86400):
     now=dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).replace(microsecond=0)
