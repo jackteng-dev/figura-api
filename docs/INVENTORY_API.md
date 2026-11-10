@@ -1,6 +1,6 @@
 # SKU 庫存與調整稽核（里程碑1C）
 
-API前綴 `/ELPSY/api/admin/products/{productId}/skus/{skuId}/inventory`。SKU必須屬於路徑商品，跨商品404。使用已驗證員工Cookie與既有CSRF；未知body欄位400，操作者只取認證Principal。
+API前綴 `/figura/api/admin/products/{productId}/skus/{skuId}/inventory`。SKU必須屬於路徑商品，跨商品404。使用已驗證員工Cookie與既有CSRF；未知body欄位400，操作者只取認證Principal。
 
 | method | suffix | permission code／回應 |
 | --- | --- | --- |

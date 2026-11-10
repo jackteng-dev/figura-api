@@ -1,6 +1,6 @@
 # 品牌／作品／分類主檔（V13）
 
-前綴 `/ELPSY/api`，沿用 `{code,message,data}`。品牌 BRAND、作品 WORK、分類 CATEGORY 各有獨立表與不可變 UUID；名稱最長80、說明500，enabled、version。名稱 trim、同類唯一且大小寫／重音敏感；不自動合併不同拼法、不猜作品、不刪除主檔。
+前綴 `/figura/api`，沿用 `{code,message,data}`。品牌 BRAND、作品 WORK、分類 CATEGORY 各有獨立表與不可變 UUID；名稱最長80、說明500，enabled、version。名稱 trim、同類唯一且大小寫／重音敏感；不自動合併不同拼法、不猜作品、不刪除主檔。
 
 | method | path | 權限 |
 | --- | --- | --- |

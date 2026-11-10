@@ -13,7 +13,7 @@
 
 ## 路徑與授權
 
-均有 /api 前綴；正式 JAR context 為 /ELPSY。
+均有 /api 前綴；正式 JAR context 為 /figura。
 
 | Method | Path | 用途／permission |
 | --- | --- | --- |

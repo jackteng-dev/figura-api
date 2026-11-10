@@ -2,7 +2,7 @@
 
 此階段是免費本地 **MOCK**：沒有 SMTP、Email、簡訊、LINE 或 App 推播，mock 接受不是真人送達。業務交易保存事件；獨立派送失敗不撤銷已提交的訂單。
 
-前綴 `/ELPSY/api`，沿用 `{code,message,data}`。員工 Cookie／即時 DB 權限／CSRF；顧客 realm 無權查詢。普通員工唯讀，店長操作。沒有删除／修改歷史／收件人編輯 API。
+前綴 `/figura/api`，沿用 `{code,message,data}`。員工 Cookie／即時 DB 權限／CSRF；顧客 realm 無權查詢。普通員工唯讀，店長操作。沒有删除／修改歷史／收件人編輯 API。
 
 | method | path | 權限 |
 | --- | --- | --- |

@@ -2,8 +2,8 @@
 <!DOCTYPE mapper
         PUBLIC "-//mybatis.org//DTO Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.shop.elpsy.mapper.AdminUserMapper">
-    <resultMap id="userRolePermissionMap" type="com.shop.elpsy.pojo.User">
+<mapper namespace="dev.jackteng.figura.mapper.AdminUserMapper">
+    <resultMap id="userRolePermissionMap" type="dev.jackteng.figura.pojo.User">
         <id property="id" column="user_id"/>
         <result property="username" column="username"/>
         <result property="password" column="password"/>
@@ -17,13 +17,13 @@
         <result property="modifiedTime" column="modified_time"/>
         <result property="isStop" column="is_stop"/>
         <!-- Map other User properties -->
-            <collection property="role" ofType="com.shop.elpsy.pojo.Role">
+            <collection property="role" ofType="dev.jackteng.figura.pojo.Role">
                 <id property="id" column="role_id"/>
                 <result property="name" column="role_name"/>
                 <result property="description" column="role_description"/>
                 <!-- Map other Permission properties -->
             </collection>
-        <collection property="permissions" ofType="com.shop.elpsy.pojo.Permission">
+        <collection property="permissions" ofType="dev.jackteng.figura.pojo.Permission">
                 <id property="id" column="permission_id"/>
                 <result property="name" column="permission_name"/>
                 <result property="parentId" column="permission_parent_id"/>
@@ -36,7 +36,7 @@
             </collection>
     </resultMap>
 
-    <resultMap id="userRoleMap" type="com.shop.elpsy.pojo.User">
+    <resultMap id="userRoleMap" type="dev.jackteng.figura.pojo.User">
         <id property="id" column="user_id"/>
         <result property="username" column="username"/>
         <result property="firstName" column="first_name"/>
@@ -49,12 +49,12 @@
         <result property="modifiedTime" column="modified_time"/>
         <result property="isStop" column="is_stop"/>
 
-        <collection property="role" ofType="com.shop.elpsy.pojo.Role">
+        <collection property="role" ofType="dev.jackteng.figura.pojo.Role">
             <id property="id" column="role_id"/>
             <result property="name" column="role_name"/>
             <result property="description" column="role_description"/>
 
-<!--            <collection property="permission" ofType="com.shop.elpsy.pojo.Permission">-->
+<!--            <collection property="permission" ofType="dev.jackteng.figura.pojo.Permission">-->
 <!--                <id property="id" column="permission_id"/>-->
 <!--                <result property="name" column="permission_name"/>-->
 <!--                &lt;!&ndash; 其他权限字段 &ndash;&gt;-->

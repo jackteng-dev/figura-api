@@ -1,6 +1,6 @@
 # 員工、角色與存取治理（V12）
 
-Context path為 `/ELPSY`，下表均以 `/api/admin/access` 為前綴。員工Cookie／CSRF與顧客身分分開。回應沿用 `{code,message,data}`；actor只取已驗證Principal，username再次由DB查詢。新增V12，V1–V11不改；原DB需先備份、隔離升級驗證，不能自動baseline／clean。
+Context path為 `/figura`，下表均以 `/api/admin/access` 為前綴。員工Cookie／CSRF與顧客身分分開。回應沿用 `{code,message,data}`；actor只取已驗證Principal，username再次由DB查詢。新增V12，V1–V11不改；原DB需先備份、隔離升級驗證，不能自動baseline／clean。
 
 | 方法／路徑 | 穩定權限 | 內容 |
 | --- | --- | --- |

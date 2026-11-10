@@ -2,12 +2,12 @@
 <!DOCTYPE mapper
         PUBLIC "-//mybatis.org//DTO Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.shop.elpsy.mapper.RoleMapper">
-    <resultMap id="RoleWithPermissionsMap" type="com.shop.elpsy.pojo.Role">
+<mapper namespace="dev.jackteng.figura.mapper.RoleMapper">
+    <resultMap id="RoleWithPermissionsMap" type="dev.jackteng.figura.pojo.Role">
         <id property="id" column="id"/>
         <result property="name" column="name"/>
         <result property="description" column="description"/>
-        <collection property="permission" ofType="com.shop.elpsy.pojo.Permission">
+        <collection property="permission" ofType="dev.jackteng.figura.pojo.Permission">
             <id property="id" column="permission_id"/>
             <result property="name" column="permission_name"/>
             <result property="description" column="permission_description"/>

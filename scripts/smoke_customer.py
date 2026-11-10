@@ -1,7 +1,7 @@
 """顧客身分真實 HTTP 驗證；僅 loopback 隔離 demo，建立合成顧客，不輸出帳密/token。"""
 import argparse, concurrent.futures, copy, http.cookiejar, json, secrets, urllib.error, urllib.parse, urllib.request, uuid
 from pathlib import Path
-p=argparse.ArgumentParser();p.add_argument('--base-url',default='http://127.0.0.1:19092/ELPSY/api');p.add_argument('--output',default='work/customer-20261007/http-customer.json');args=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--base-url',default='http://127.0.0.1:19092/figura/api');p.add_argument('--output',default='work/customer-20261007/http-customer.json');args=p.parse_args()
 assert urllib.parse.urlsplit(args.base_url).hostname in ['127.0.0.1','localhost'], '只允許 loopback'
 checks=[]
 def check(name,ok):

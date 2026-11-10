@@ -1,7 +1,7 @@
 """Real inventory socket checks on disposable loopback demo only; no credentials in report."""
 import argparse, copy, http.cookiejar, json, os, urllib.request, urllib.error, urllib.parse, uuid
 from pathlib import Path
-p=argparse.ArgumentParser();p.add_argument('--base-url',default='http://127.0.0.1:19092/ELPSY/api');p.add_argument('--output',default='work/inventory-20261007/http-inventory.json');args=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--base-url',default='http://127.0.0.1:19092/figura/api');p.add_argument('--output',default='work/inventory-20261007/http-inventory.json');args=p.parse_args()
 assert urllib.parse.urlsplit(args.base_url).hostname in ['127.0.0.1','localhost']
 checks=[]
 def check(name,ok):

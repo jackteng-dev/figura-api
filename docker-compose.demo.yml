@@ -4,7 +4,7 @@ services:
     image: mysql:8.4
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?需私有 root 密碼}
-      MYSQL_DATABASE: elpsy_shop_demo
+      MYSQL_DATABASE: figura_shop_demo
       MYSQL_USER: shop_demo
       MYSQL_PASSWORD: ${DB_PASSWORD:?需私有 demo DB 密碼}
       TZ: Asia/Taipei

@@ -48,7 +48,7 @@ def recipe(project,service,images):
 
 
 def gateway(project):
-    upstream='backend:9090/fadaiting-camp/api/' if project=='camp' else 'api:9090/ELPSY/api/'
+    upstream='backend:9090/fadaiting-camp/api/' if project=='camp' else 'api:9090/figura/api/'
     value='pid /tmp/nginx.pid;\nevents { worker_connections 256; }\nhttp { include /etc/nginx/mime.types; default_type application/octet-stream; client_body_temp_path /tmp/client; proxy_temp_path /tmp/proxy; fastcgi_temp_path /tmp/fastcgi; uwsgi_temp_path /tmp/uwsgi; scgi_temp_path /tmp/scgi; access_log off; server { listen 8080; absolute_redirect off; root /usr/share/nginx/html; client_max_body_size 32m; location = /healthz { return 200 "gateway\\n"; } location /api/ { proxy_pass http://'+upstream+'; proxy_set_header Host $http_host; proxy_set_header X-Forwarded-Proto ""; proxy_set_header X-Forwarded-For ""; proxy_set_header Forwarded ""; proxy_read_timeout 120s; } location / { try_files $uri $uri/ /index.html; } } }\n'
     if project=='camp':
         value=value.replace(' location / {',' location /objects/ { proxy_pass http://minio:9000/; proxy_set_header Host minio:9000; proxy_set_header Authorization ""; proxy_read_timeout 60s; } location / {')

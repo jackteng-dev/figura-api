@@ -60,7 +60,7 @@ flowchart LR
 ## 本機啟動
 
 準備 JDK 21（編譯目標 Java 17）、Maven 3.9、Python 3 與 Docker Compose，在本倉庫根目錄執行。
-僅用全新、隔離的 `elpsy_shop_demo`；私有設定產生器不覆蓋既有檔案，也不重設既有帳號密碼。
+僅用全新、隔離的 `figura_shop_demo`；私有設定產生器不覆蓋既有檔案，也不重設既有帳號密碼。
 
 ```sh
 python3 scripts/init_demo_env.py
@@ -71,10 +71,10 @@ set -a
 . ./work/demo.env
 set +a
 mvn package
-java -jar target/ELPSY_Shop-AP-1.0-SNAPSHOT.jar --spring.profiles.active=demo
+java -jar target/figura-api-1.0-SNAPSHOT.jar --spring.profiles.active=demo
 ```
 
-demo API 路徑為 `/ELPSY/api`，連接埠為 `19092`；Spring 不會自行載入 `.env`。
+demo API 路徑為 `/figura/api`，連接埠為 `19092`；Spring 不會自行載入 `.env`。
 上述一般建置未啟用真實服務整合測試；啟用旗標、隔離測試與 Web 配對啟動方式見[詳細啟動文件](docs/NEW_MACHINE_SETUP.md)。
 
 ## 已知限制

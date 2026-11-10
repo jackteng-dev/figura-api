@@ -25,7 +25,7 @@
 
 使用免費開發方案；需要付費且無免費替代時先告知。遵守當前 proxy／網路政策；容器不得繞過政策。帳密、JWT 金鑰、資料、依賴、模型、build、原始日誌留在忽略路徑。私有 `.env` 不自動載入 Spring。
 
-測試只能用明確隔離的 DB／Redis；demo SQL 只建新空 `elpsy_shop_demo`，不可拿去套原有 DB。demo 固定用戶名不是固定密碼；密碼由私有環境提供，不能重設已有用戶。不得把占位頁、mock 付款、localhost build 或合約測試宣稱成正式管理功能、實際收款、部署或 App 真機完成。
+測試只能用明確隔離的 DB／Redis；demo SQL 只建新空 `figura_shop_demo`，不可拿去套原有 DB。demo 固定用戶名不是固定密碼；密碼由私有環境提供，不能重設已有用戶。不得把占位頁、mock 付款、localhost build 或合約測試宣稱成正式管理功能、實際收款、部署或 App 真機完成。
 
 真機、原資料移轉、商家憑證、實際服務驗收先列 `docs/CLOUD_LOCAL_FOLLOWUP.md`。正式 HTTPS Cookie 預設 Secure；只有 loopback HTTP 展示可明確改 false。
 
@@ -33,7 +33,7 @@
 
 顧客與員工使用獨立表、Cookie、JWT realm 與 Redis namespace；本人資料 ID 僅取已驗證 Principal，不能信任 body／query 的 owner ID。顧客入口 /shop 與 /api/customer，舊 /api/user/* 已停用。
 
-已套用的 Flyway V1／V2／V3／V4／V5／V6／V7／V8／V9／V10／V11／V12／V13／V14／V15／V16／V17／V18 不改內容或 checksum；後續 schema 以新增版本 migration 保存。demo 限新空隔離 elpsy_shop_demo，寫入前核對名稱，非 demo 預設關閉；既有無 history DB 不自動 baseline／clean，先備份與隔離還原後規劃。
+已套用的 Flyway V1／V2／V3／V4／V5／V6／V7／V8／V9／V10／V11／V12／V13／V14／V15／V16／V17／V18 不改內容或 checksum；後續 schema 以新增版本 migration 保存。demo 限新空隔離 figura_shop_demo，寫入前核對名稱，非 demo 預設關閉；既有無 history DB 不自動 baseline／clean，先備份與隔離還原後規劃。
 
 ## 庫存與稽核（2026-10-07）
 

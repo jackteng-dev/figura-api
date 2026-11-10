@@ -1,6 +1,6 @@
 # 購物車與本人地址（里程碑 2A）
 
-所有端點前綴 `/ELPSY/api/customer`；僅驗證後的顧客 Cookie／realm／Redis session。員工 Cookie 不可代替會員，owner 只取 CustomerPrincipal。寫入需 X-XSRF-TOKEN；未知 body 欄位、小數整數、無效 UUID／版本拒絕。沿用 Result envelope，200 成功；400 格式、401 身分、403 CSRF／未允許端點、404 找不到本人資料、409 衝突或限制。
+所有端點前綴 `/figura/api/customer`；僅驗證後的顧客 Cookie／realm／Redis session。員工 Cookie 不可代替會員，owner 只取 CustomerPrincipal。寫入需 X-XSRF-TOKEN；未知 body 欄位、小數整數、無效 UUID／版本拒絕。沿用 Result envelope，200 成功；400 格式、401 身分、403 CSRF／未允許端點、404 找不到本人資料、409 衝突或限制。
 
 ## 購物車
 

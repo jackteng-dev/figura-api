@@ -2,7 +2,7 @@
 
 2026-10-07（Asia/Taipei）。只處理隔離demo的整筆模擬退貨，每筆訂單最多一次申請；拒絕後不重新申請。不指定正式期限、運費、手續費或部分退款政策，不安排寄送、轉帳或通知。前述限制是演練邊界，不能套用為正式商家政策。
 
-base `/ELPSY/api`；Result包裹`data`。顧客使用獨立CustomerPrincipal／Cookie／CSRF；員工使用原有staff realm＋URL/method權限，操作還會在DB鎖定並重新檢查啟用及授權。owner、actor、金額、時間均由伺服器取值，不接受未知欄位。UUID使用小寫標準格式；版本必須正整數，原因／說明為trim後非空、最多500字。時間為既有LocalDateTime合約，UI以台北時間顯示。
+base `/figura/api`；Result包裹`data`。顧客使用獨立CustomerPrincipal／Cookie／CSRF；員工使用原有staff realm＋URL/method權限，操作還會在DB鎖定並重新檢查啟用及授權。owner、actor、金額、時間均由伺服器取值，不接受未知欄位。UUID使用小寫標準格式；版本必須正整數，原因／說明為trim後非空、最多500字。時間為既有LocalDateTime合約，UI以台北時間顯示。
 
 | Method／path | 身分／權限 | 請求與結果 |
 | --- | --- | --- |
