@@ -8,11 +8,11 @@
         <version>3.2.1</version>
     </parent>
     <groupId>com.jack</groupId>
-    <artifactId>ELPSY_Shop-AP</artifactId>
+    <artifactId>figura-api</artifactId>
     <version>1.0-SNAPSHOT</version>
     <packaging>jar</packaging>
 
-    <name>ELPSY_Shop-AP</name>
+    <name>figura-api</name>
     <url>http://maven.apache.org</url>
 
     <properties>

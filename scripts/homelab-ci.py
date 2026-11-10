@@ -84,7 +84,7 @@ class Fixture:
         payload = self.root/'canary.bin'; payload.write_bytes(b'homelab-disposable-s3-canary')
         empty = self.root/'empty.bin'; empty.write_bytes(b'')
         response = self.root/'canary-response'
-        bucket = '/elpsy-shop-images-demo'; key = bucket + '/ci-canary-' + secrets.token_hex(8)
+        bucket = '/figura-images'; key = bucket + '/ci-canary-' + secrets.token_hex(8)
         for method, target, body, allowed in [('PUT', bucket, empty, [200]), ('PUT', key, payload, [200]),
                                                ('GET', key, None, [200]), ('DELETE', key, None, [204])]:
             args = ['curl', '--silent', '--show-error', '--noproxy', '*', '--connect-timeout', '3', '--max-time', '15',
@@ -135,18 +135,18 @@ class Fixture:
             else:
                 env.update(TICKET_DB_URL=url, TICKET_DB_USER=user, TICKET_DB_PASSWORD=password)
         if project == 'shop':
-            cid, ports = self.start('mysql', [3306], {'MYSQL_DATABASE': 'elpsy_shop_demo', 'MYSQL_USER': 'shop_demo',
+            cid, ports = self.start('mysql', [3306], {'MYSQL_DATABASE': 'figura_shop_demo', 'MYSQL_USER': 'shop_demo',
                                      'MYSQL_PASSWORD': password, 'MYSQL_ROOT_PASSWORD': self.secret['root'], 'TZ': 'Asia/Taipei'})
             for _ in range(120):
                 result = subprocess.run(['docker', 'exec', '--env', 'MYSQL_PWD', cid, 'mysql', '-h', '127.0.0.1',
-                                         '-u', 'shop_demo', '-Nse', 'SELECT 1', 'elpsy_shop_demo'],
+                                         '-u', 'shop_demo', '-Nse', 'SELECT 1', 'figura_shop_demo'],
                                         env={**self.env, 'MYSQL_PWD': password}, capture_output=True, timeout=15)
                 if result.returncode == 0:
                     break
                 time.sleep(2)
             else:
                 raise RuntimeError('Disposable MySQL not ready')
-            env.update(DB_URL='jdbc:mysql://127.0.0.1:' + str(ports[3306]) + '/elpsy_shop_demo?serverTimezone=Asia/Taipei',
+            env.update(DB_URL='jdbc:mysql://127.0.0.1:' + str(ports[3306]) + '/figura_shop_demo?serverTimezone=Asia/Taipei',
                        DB_USERNAME='shop_demo', DB_PASSWORD=password, SHOP_MYSQL_INTEGRATION='true', JWT_SECRET=self.secret['jwt'],
                        SPRING_PROFILES_ACTIVE='demo', DEMO_ADMIN_PASSWORD=self.secret['admin'], DEMO_STAFF_PASSWORD=self.secret['staff'],
                        MOCK_PAYMENT_WEBHOOK_SECRET=self.secret['webhook'], TZ='Asia/Taipei')
@@ -154,7 +154,7 @@ class Fixture:
                 env['MOCK_' + flag + '_ENABLED'] = 'true'
             s3 = self.root/'s3.json'
             s3.write_text(json.dumps({'identities': [{'name': 'ci-only', 'credentials': [{'accessKey': self.secret['access'],
-                 'secretKey': self.secret['s3']}], 'actions': [a + ':elpsy-shop-images-demo' for a in ['Admin', 'Read', 'Write', 'List']]}]}))
+                 'secretKey': self.secret['s3']}], 'actions': [a + ':figura-images' for a in ['Admin', 'Read', 'Write', 'List']]}]}))
             s3.chmod(0o444)  # Only the private 0700 parent is accessible on the runner.
             cid, ports = self.start('seaweed', [8333, 8888], mounts=[(s3, '/etc/seaweedfs/s3.json'),
                 (Path('config/seaweed-filer.toml'), '/etc/seaweedfs/filer.toml')], args=['server', '-dir=/data', '-ip=seaweed', '-ip.bind=0.0.0.0',
@@ -173,7 +173,7 @@ class Fixture:
             self.s3_canary(ports[8333])
             env.update(SHOP_IMAGES_ENABLED='true', SHOP_IMAGES_INTEGRATION='true', SHOP_IMAGES_ENDPOINT='http://127.0.0.1:' + str(ports[8333]),
                        SHOP_IMAGES_ACCESS_KEY=self.secret['access'], SHOP_IMAGES_SECRET_KEY=self.secret['s3'],
-                       SHOP_IMAGES_BUCKET='elpsy-shop-images-demo', SHOP_IMAGES_INIT_BUCKET='true')
+                       SHOP_IMAGES_BUCKET='figura-images', SHOP_IMAGES_INIT_BUCKET='true')
         if project in ['camp', 'shop', 'encore']:
             args = ['redis-server', '--save', '', '--appendonly', 'no']
             if project != 'shop':

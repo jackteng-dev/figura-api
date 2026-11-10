@@ -1,6 +1,6 @@
 """僅對 loopback 的獨立展示服務驗證，不輸出密碼或 token。"""
 import argparse, copy, concurrent.futures, http.cookiejar, json, os, urllib.request, urllib.error, urllib.parse, uuid
-p=argparse.ArgumentParser();p.add_argument('--base-url',default='http://127.0.0.1:19092/ELPSY/api');p.add_argument('--output');args=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--base-url',default='http://127.0.0.1:19092/figura/api');p.add_argument('--output');args=p.parse_args()
 assert urllib.parse.urlsplit(args.base_url).hostname in ['127.0.0.1','localhost'], '只允許 loopback 演練'
 checks=[]
 def check(name,ok):

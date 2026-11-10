@@ -1,0 +1,14 @@
+package dev.jackteng.figura;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+/**
+ * Hello world!
+ */
+@SpringBootApplication
+public class FiguraApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(FiguraApplication.class, args);
+    }
+}

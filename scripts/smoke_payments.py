@@ -1,7 +1,7 @@
 """Real HTTP mock payment/callback smoke. Synthetic fixtures, loopback disposable demo only."""
 import argparse, concurrent.futures, copy, http.cookiejar, json, os, secrets, urllib.error, urllib.parse, urllib.request, uuid
 from pathlib import Path
-p=argparse.ArgumentParser();p.add_argument('--base-url',default='http://127.0.0.1:19092/ELPSY/api');p.add_argument('--output',default='work/payments-20261007/http-payments.json');args=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--base-url',default='http://127.0.0.1:19092/figura/api');p.add_argument('--output',default='work/payments-20261007/http-payments.json');args=p.parse_args()
 assert urllib.parse.urlsplit(args.base_url).hostname in ['127.0.0.1','localhost']
 checks=[]
 def check(name,ok):

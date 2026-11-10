@@ -28,7 +28,7 @@ server:
   address: ${SERVER_ADDRESS:127.0.0.1}
   port: ${SERVER_PORT:9090}
   servlet:
-    context-path: /ELPSY
+    context-path: /figura
 auth:
   jwt-secret: ${JWT_SECRET}
   cookie-secure: ${AUTH_COOKIE_SECURE:true}
@@ -42,5 +42,5 @@ shop:
     endpoint: ${SHOP_IMAGES_ENDPOINT:}
     access-key: ${SHOP_IMAGES_ACCESS_KEY:}
     secret-key: ${SHOP_IMAGES_SECRET_KEY:}
-    bucket: ${SHOP_IMAGES_BUCKET:elpsy-shop-images-demo}
+    bucket: ${SHOP_IMAGES_BUCKET:figura-images}
     init-bucket: ${SHOP_IMAGES_INIT_BUCKET:false}

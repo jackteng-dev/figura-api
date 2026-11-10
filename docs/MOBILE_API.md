@@ -2,7 +2,7 @@
 
 使用獨立 Flutter 倉庫 [Shop_app](https://github.com/jackteng-dev/Shop_app)，共用本後端與既有資料庫。無新 Flyway migration，V1–V18 不改。網站 `/api/customer` Cookie／CSRF 合約保留，員工 API 不對 App 開放。
 
-所有 URL 以 `https://<host>/ELPSY/api` 為前綴。公開商品與預購依舊 GET `/catalog/products`、`/catalog/preorders` 及詳情／主圖，不帶 Bearer。回應沿用 `{code,message,data}`。
+所有 URL 以 `https://<host>/figura/api` 為前綴。公開商品與預購依舊 GET `/catalog/products`、`/catalog/preorders` 及詳情／主圖，不帶 Bearer。回應沿用 `{code,message,data}`。
 
 ## 登入
 

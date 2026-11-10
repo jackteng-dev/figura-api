@@ -1,5 +1,5 @@
 -- 僅供新建隔離 demo DB。不是使用者舊 DB migration，沒有 DROP／ALTER。
-USE elpsy_shop_demo;
+USE figura_shop_demo;
 CREATE TABLE user (
   id INT PRIMARY KEY AUTO_INCREMENT,
   username VARCHAR(64) NOT NULL UNIQUE,

@@ -1,7 +1,7 @@
 """Actual socket RBAC verification; disposable loopback demo, no credentials in report."""
 import argparse,http.cookiejar,urllib.request as u,urllib.parse,urllib.error,json,os,uuid,copy,concurrent.futures
 from pathlib import Path
-p=argparse.ArgumentParser();p.add_argument('--base-url',default='http://127.0.0.1:19092/ELPSY/api');p.add_argument('--output',default='work/rbac-20261007/http-access.json');args=p.parse_args();assert urllib.parse.urlsplit(args.base_url).hostname in ('localhost','127.0.0.1')
+p=argparse.ArgumentParser();p.add_argument('--base-url',default='http://127.0.0.1:19092/figura/api');p.add_argument('--output',default='work/rbac-20261007/http-access.json');args=p.parse_args();assert urllib.parse.urlsplit(args.base_url).hostname in ('localhost','127.0.0.1')
 checks=[]
 def check(name,ok):assert ok,name;checks.append(name)
 class Client:

@@ -2,7 +2,7 @@
 
 2026-10-07（Asia/Taipei）。本里程碑完成每件商品一張主圖，支援草稿上傳／替換／移除及上架後匿名顯示。使用免費自架 SeaweedFS 3.85 與通用 AWS SDK for Java v2 S3 client；沒有啟動 MinIO、建立外部付費服務或正式部署。多圖排序／SKU圖、縮圖轉檔、預簽名直傳另階段。
 
-base `/ELPSY/api`，JSON回Result的data；圖片內容直接回binary。所有寫入仍需員工Cookie、CSRF及即時DB啟用／授權，顧客realm不得寫。公開圖片只GET且需PUBLISHED、有啟用SKU、imageId仍為目前主圖。沒有主圖可上架；上架後需先下架才改圖。普通demo員工及店長皆可管理草稿主圖，只有店長能上架。
+base `/figura/api`，JSON回Result的data；圖片內容直接回binary。所有寫入仍需員工Cookie、CSRF及即時DB啟用／授權，顧客realm不得寫。公開圖片只GET且需PUBLISHED、有啟用SKU、imageId仍為目前主圖。沒有主圖可上架；上架後需先下架才改圖。普通demo員工及店長皆可管理草稿主圖，只有店長能上架。
 
 | Method／path | 權限 | 請求／結果 |
 | --- | --- | --- |
@@ -30,7 +30,7 @@ SQL與S3不是同一交易。操作READ_COMMITTED，啟用員工／grant→produ
 
 `SHOP_IMAGES_ENABLED`預設false；false時新寫404，metadata／audit仍可讀，binary儲存不可用503。endpoint／access-key／secret-key／bucket只後端程序環境，不能進Git／VITE_*。init-bucket預設false，demo可明確true建立缺少的專用bucket，不重設既有憑證或bucket。現有可信work/demo.env執行`python3 scripts/init_images_env.py`只補缺設定，並建立忽略的work/seaweed-s3.json；新的init_demo_env生成私有key後仍需images initializer產生S3設定檔。
 
-`docker compose -p elpsy-shop-demo -f docker-compose.demo.yml --profile images up -d`啟動專用MySQL／Redis／SeaweedFS；S3僅loopback18333、bucket elpsy-shop-images-demo、設定憑證權限只此bucket。其餘master／filer／volume端口不向host公開；NO_PROXY只追加內部service與loopback，保留代理政策。leveldb2 metadata與volume存於seaweed-demo-data；固定3.85 image digest，volume.max12、128MB小volume為演練容量設定，不表示容錯。AWS SDK2.31.68使用path style、URLConnection、明確timeout/retry，optional checksum WHEN_REQUIRED以兼容此S3服務；SQL normalized SHA256另驗內容完整性。
+`docker compose -p elpsy-shop-demo -f docker-compose.demo.yml --profile images up -d`啟動專用MySQL／Redis／SeaweedFS；S3僅loopback18333、bucket figura-images、設定憑證權限只此bucket。其餘master／filer／volume端口不向host公開；NO_PROXY只追加內部service與loopback，保留代理政策。leveldb2 metadata與volume存於seaweed-demo-data；固定3.85 image digest，volume.max12、128MB小volume為演練容量設定，不表示容錯。AWS SDK2.31.68使用path style、URLConnection、明確timeout/retry，optional checksum WHEN_REQUIRED以兼容此S3服務；SQL normalized SHA256另驗內容完整性。
 
 V11新增四表與54–57權限，V1–V10不改checksum。舊Minio helper與依賴移除；舊/upload三入口已停用410（仍先過安全守門），不再接受任意本地path。員工頭像上傳尚未接新儲存，預設頭像保持；本里程碑只商品主圖，不移轉原圖片或重寫歷史avatar網址。
 

@@ -30,12 +30,12 @@ set -a
 . ./work/demo.env
 set +a
 SHOP_REDIS_INTEGRATION=true SHOP_REDIS_TEST_PORT=17379 SHOP_MYSQL_INTEGRATION=true mvn package
-java -jar target/ELPSY_Shop-AP-1.0-SNAPSHOT.jar --spring.profiles.active=demo
+java -jar target/figura-api-1.0-SNAPSHOT.jar --spring.profiles.active=demo
 ```
 
 普通 `mvn package` 不需要 DB；未啟用 SHOP_REDIS_INTEGRATION 時略過兩個真實 Redis 測試，未啟用 SHOP_MYSQL_INTEGRATION 時略過六個顧客、七個商品與十一個庫存、九個購物車／地址、十二個訂單、十三個付款真實 MySQL／Redis 整合測試（庫存升級fixture需SHOP_MIGRATION_FIXTURE_SKU；V4→V5另需SHOP_V5_FIXTURE_CUSTOMER，指向由舊正式JAR建立的本人資料）。完整驗證要先匯入私有 demo env、開隔離服務，第一次測試會自動 migration 與建立兩個展示員工。兩個員工 Redis 測試用 database 15；顧客整合用 Spring 設定的 database（本輪預設0），按隨機顧客 ID 清自己的 key，不 flushDB。請只指向演練 Redis，不能拿此命令測共用正式 Redis。
 
-API 在 `http://127.0.0.1:19092/ELPSY/api`。非 demo profile 不建立展示用戶，正式設定必須自行提供 DB、Redis、JWT_SECRET 與原 schema。後續圖片採 SeaweedFS；目前物件儲存未啟動，本輪不驗上傳。
+API 在 `http://127.0.0.1:19092/figura/api`。非 demo profile 不建立展示用戶，正式設定必須自行提供 DB、Redis、JWT_SECRET 與原 schema。後續圖片採 SeaweedFS；目前物件儲存未啟動，本輪不驗上傳。
 
 顧客入口 `http://127.0.0.1:15176/shop`，自行註冊合成會員；`/shop/account` 編輯本人暱稱，員工入口仍 `/admin/login`。顧客與員工可同瀏覽器共存；顧客 Cookie 是 customerAccessToken／customerRefreshToken、獨立 customerDeviceId。兩種 JWT 新增 realm，舊員工 token 需重新登入，沒有改既有密碼。舊 /api/user/* 一律410，不再作公開會員入口。
 
@@ -48,7 +48,7 @@ Cookie 預設 HttpOnly、SameSite=Strict、Secure=true；私有 demo 檔明確 f
 ```sh
 npm ci
 npm run build
-VITE_API_PROXY_TARGET=http://127.0.0.1:19092/ELPSY npm run preview -- --host 127.0.0.1 --port 15176 --strictPort
+VITE_API_PROXY_TARGET=http://127.0.0.1:19092/figura npm run preview -- --host 127.0.0.1 --port 15176 --strictPort
 ```
 
 開 `http://127.0.0.1:15176/admin/login`，使用自己 work/demo.env 的展示帳密。Vite dev／preview 同源 /api proxy 到後端；production dist 的正式部署需另外配置反向代理，不把 Vite preview 當正式伺服器。不要在 VITE_* 放私有值。
@@ -162,7 +162,7 @@ Ctrl+C 停止自己啟動的 Java／preview。`docker compose --env-file work/de
 
 最新demo包含Flyway V1–V11，V1–V10不改。在後端建立可信work/demo.env後，執行 `python3 scripts/init_images_env.py`，只补缺SHOP_IMAGES_*與忽略的私有work/seaweed-s3.json，不重設既有憑證／false。程序仍需載入私有環境，Spring不自動讀檔；前端不可用VITE_*保存S3私鑰。
 
-`docker compose -p elpsy-shop-demo -f docker-compose.demo.yml --profile images up -d`啟動専用MySQL／Redis／SeaweedFS，S3只loopback18333；私有bucket elpsy-shop-images-demo，leveldb2 metadata及物件volume持久。profile不啟用就不啟動SeaweedFS；SHOP_IMAGES_ENABLED預設false，新寫404。演練init-bucket=true可建立缺少bucket，正式預建bucket／最小憑證且init-bucket=false。固定3.85digest、12個128MB小volume為演練；NO_PROXY追加內部seaweed，保留既有HTTP代理。不要把専用資料volume或真實bucket拿來跑清理測試。
+`docker compose -p elpsy-shop-demo -f docker-compose.demo.yml --profile images up -d`啟動専用MySQL／Redis／SeaweedFS，S3只loopback18333；私有bucket figura-images，leveldb2 metadata及物件volume持久。profile不啟用就不啟動SeaweedFS；SHOP_IMAGES_ENABLED預設false，新寫404。演練init-bucket=true可建立缺少bucket，正式預建bucket／最小憑證且init-bucket=false。固定3.85digest、12個128MB小volume為演練；NO_PROXY追加內部seaweed，保留既有HTTP代理。不要把専用資料volume或真實bucket拿來跑清理測試。
 
 員工/admin/products先存草稿或重新載入未存表單，再在商品主圖選5MB以內PNG／JPEG、填替代文字，上傳／替換／移除；兩種員工均可改草稿，店長上架。顧客列表／詳情真實顯示主圖，沒有圖／失敗顯示fallback。主圖使用商品version，上架先下架才改；未知回應凍結並重試同UUID／檔案，重整先讀圖與audit。圖片不改SKU／stock，舊圖及失敗暫存保留至少10分鐘再排程清理；封存商品當前圖保留供員工查核。
 
