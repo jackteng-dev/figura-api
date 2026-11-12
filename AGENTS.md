@@ -1,5 +1,19 @@
 # Figura（原 ELPSY Shop） 工作規則
 
+## 部署限制（最優先，2026-11-12）
+
+本 repo 的 main 會由作者的自架伺服器自動部署（GitHub Actions 發布映像 → 伺服器 CD 自然輪詢、先備份與隔離演練再切換）。在本機或任何 AI 工具修改時，**下列規則優先於本檔其他內容**：
+
+1. **一律走 PR**：開功能分支、push、開 PR，`verify` CI 通過後才 merge。不可直接 push main、不可 force push（分支保護也會拒絕）。本檔較舊段落提到「push main」者，以本規則為準。
+2. **本機開發用本機資料庫**：用 repo 內的 docker compose／說明啟動全新空資料庫，不要連線或下載正式資料庫，不要把帳密、token、`.env` 寫進 Git。
+3. **受保護路徑（CD 資料契約）**：PR 若修改下列路徑，CD 會拒絕自動部署。請先停下，告知作者在伺服器端執行受控切換（contract switch）後才能 merge：
+   - `src/main/resources/`（含 Flyway `db/demo-migration`、mapper XML、application 設定）
+   - `scripts/demo-identity-schema.sql`
+4. 只在本機跑測試、編譯、啟動，不會修改上述檔案（Maven 會把 resources 複製到 `target/`，該目錄已被忽略）。
+5. **不要新增會修改正式資料的 Flyway migration**：此專案的 CD 要求部署前後正式資料庫指紋（資料列與 migration 歷史）完全相同，新 migration 會讓部署失敗回退。需要資料變更時告知作者，由伺服器工具在部署之間處理。V1–V18 已套用，不可修改（checksum）。
+
+push 前請用 `git diff --stat origin/main` 確認是否動到受保護路徑，並在 PR 說明中註明。
+
 本倉庫是正式維護的 A 版。產品方向：公仔／收藏品單店，現貨交易完成後再加預購，最後接顧客 App。前後端分別是 Shop_back（Vue／TypeScript）與 shop_bak_ap（Spring Boot／MyBatis）；各自 main、交接、測試與提交。B 版 ELPSY_Shop-WEB／AP（master）僅作唯讀參考。本次工作只涉及本作品，不改發呆亭、Atlas、日日選物或展示平台。
 
 ## 每輪流程
