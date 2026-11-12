@@ -12,6 +12,11 @@
 4. 只在本機跑測試、編譯、啟動，不會修改上述檔案（Maven 會把 resources 複製到 `target/`，該目錄已被忽略）。
 5. **不要新增會修改正式資料的 Flyway migration**：此專案的 CD 要求部署前後正式資料庫指紋（資料列與 migration 歷史）完全相同，新 migration 會讓部署失敗回退。需要資料變更時告知作者，由伺服器工具在部署之間處理。V1–V18 已套用，不可修改（checksum）。
 
+**資料庫結構變更（新增表格／欄位、索引、改名、刪除）不會自動部署。** 寫法：Flyway migration（`src/main/resources/db/demo-migration`）。流程：
+1. 本機空資料庫測試通過後開 PR，**先不要 merge**，告知作者「這個 PR 有 schema 變更」；由作者在伺服器端以受控工具處理（暫停 CD → 備份正式資料庫 → 隔離副本試套 → merge 與發布 → 套用正式 → 恢復 CD）。
+2. migration 必須**新舊版程式都能運作**（CD 會在新 schema 上演練回退到舊版）：可直接做的是新增表格、新增可 NULL 或有預設值的欄位、新增索引；改名、刪欄、改型別要分兩次（先加新欄位並讓程式相容，穩定後再移除舊的）；不可一次 DROP 舊版仍在使用的結構。
+3. 不修改已套用過的 migration 檔（checksum 會失敗）。
+
 push 前請用 `git diff --stat origin/main` 確認是否動到受保護路徑，並在 PR 說明中註明。
 
 本倉庫是正式維護的 A 版。產品方向：公仔／收藏品單店，現貨交易完成後再加預購，最後接顧客 App。前後端分別是 Shop_back（Vue／TypeScript）與 shop_bak_ap（Spring Boot／MyBatis）；各自 main、交接、測試與提交。B 版 ELPSY_Shop-WEB／AP（master）僅作唯讀參考。本次工作只涉及本作品，不改發呆亭、Atlas、日日選物或展示平台。
