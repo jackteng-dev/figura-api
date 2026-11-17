@@ -1,5 +1,13 @@
 # Figura（原 ELPSY Shop） 後端交接
 
+## 2026-11-18：直接購買（單一款式下單，不經購物車）
+
+分支 `feat/buy-now`（疊在 `feat/contact-only-login` 上；無 schema 變更、未改 `src/main/resources/`）。
+
+- `POST /customer/orders/direct`（Cookie＋CSRF）：`requestId`、`productId`、`skuId`、`quantity`(1–99)、`addressId`、`addressVersion`、`expectedSubtotalTwd`。與購物車結帳共用同一建立流程（customer 鎖 → 依 product ID 排序鎖商品與 SKU → 保留庫存 → 30 分鐘期限 → 通知 outbox，同交易），但**不讀取也不清空購物車**。
+- 直接購買訂單以 `cart_version=0` 標記（購物車有品項時版本必 ≥1）。同 requestId 重送需同款式／數量／地址／金額，否則 409；購物車與直接購買的 requestId 互不可沿用。
+- 測試：`DirectOrderIntegrationTest` 2 項（只保留該款、購物車版本與品項不變、重送冪等、跨用途 requestId 409、庫存不足／金額不符／SKU 不屬於商品／他人地址／下架／數量越界／多餘欄位／CSRF／未登入）。訂單、購物車、付款相關測試全過。
+
 ## 2026-11-17：關閉帳號名稱登入與暱稱（只剩手機＋Email）
 
 分支 `feat/contact-only-login`（無 schema 變更、未改 `src/main/resources/`）。作者要求：開發階段，舊帳號與相關訂單可刪。

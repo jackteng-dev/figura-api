@@ -13,6 +13,17 @@ public final class OrderPayloads {
   @NotNull @Min(0) Long expectedSubtotalTwd) {
   @JsonAnySetter public void unknown(String name,Object value){throw new IllegalArgumentException("不支援的欄位");}
  }
+ /** 直接購買：單一款式，不經過也不清空購物車；金額仍由伺服器依目前價格核對。 */
+ public record DirectPlace(
+  @NotBlank @Pattern(regexp="[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}") String requestId,
+  @NotBlank @Pattern(regexp="[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}") String productId,
+  @NotBlank @Pattern(regexp="[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}") String skuId,
+  @NotNull @Min(1) @Max(99) Integer quantity,
+  @NotBlank @Pattern(regexp="[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}") String addressId,
+  @NotNull @Min(1) Integer addressVersion,
+  @NotNull @Min(0) Long expectedSubtotalTwd) {
+  @JsonAnySetter public void unknown(String name,Object value){throw new IllegalArgumentException("不支援的欄位");}
+ }
  public record Cancel(@NotNull @Min(1) Integer expectedVersion) {
   @JsonAnySetter public void unknown(String name,Object value){throw new IllegalArgumentException("不支援的欄位");}
  }

@@ -76,6 +76,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     || (path.equals("/api/customer/cart")&&method.equals("GET"))
                     || (matcher.match("/api/customer/cart/items/*",path)&&(method.equals("PUT")||method.equals("DELETE")))
                     || (path.equals("/api/customer/orders")&&(method.equals("GET")||method.equals("POST")))
+                    || (path.equals("/api/customer/orders/direct")&&method.equals("POST"))
                     || (path.equals("/api/customer/preorders")&&(method.equals("GET")||method.equals("POST")))
                     || (matcher.match("/api/customer/preorders/*",path)&&method.equals("GET"))
                     || (matcher.match("/api/customer/preorders/*/cancel",path)&&method.equals("POST"))
