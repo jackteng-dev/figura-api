@@ -1,5 +1,31 @@
 # Figura（原 ELPSY Shop） 後端交接
 
+## 2026-11-17：顧客手機＋Email＋密碼註冊、Email 驗證、忘記密碼（V19，含 schema 變更）
+
+分支 `feat/customer-email-phone`。**有 schema 變更（`src/main/resources/db/demo-migration/V19__…`，CD 受保護路徑），PR 不可直接 merge，需作者在伺服器端受控切換。** V1–V18 未改；V19 只新增可 NULL 欄位與新表，舊版程式可在新 schema 上運作。
+
+- **V19**：`customer` 新增 `email`（ASCII、小寫正規化、UNIQUE）、`phone`（09xxxxxxxx、UNIQUE）、`email_verified_at`；新表 `customer_email_token`（一次性連結，只存 SHA-256、用途 VERIFY／RESET、到期與使用時間）、`customer_mock_email`（模擬寄信）。不寫入任何資料列，不改權限資料。
+- **註冊** `POST /api/customer/auth/register`：新版 `{phone,email,password}`（不需暱稱；內部自動產生 `m_…` username，暱稱預設「會員＋手機末四碼」）。舊版 `{username,password,displayName}` 仍可用（Flutter App 相容），兩種不可混用。Email／手機各自重複回 409「此 Email 已被註冊」／「此手機號碼已被註冊」（大小寫、+886／空白／連字號寫法視為同一個；並發由唯一鍵保證只有一筆）。
+- **登入**：`username` 欄位可填 Email、手機或舊帳號名稱；失敗一律 401「帳號或密碼不正確」，不揭露帳號是否存在。網站與 App 登入相同。
+- **Email 驗證**：新版註冊後寄驗證信（24 小時）；`POST /api/customer/auth/email/verify {token}`（公開）；`POST /api/customer/email/verification`（本人重寄，60 秒一次；新連結使舊連結失效）。手機不驗證（展示用途）。目前不因未驗證阻擋下單。
+- **忘記密碼**：`POST /api/customer/auth/password/forgot {email}` 一律 200（不揭露信箱是否註冊；同一信箱每小時最多 3 封）；`POST /api/customer/auth/password/reset {token,password}`（30 分鐘、一次性），成功後撤銷該顧客所有網站與 App 登入。
+- **模擬寄信**：`MOCK_EMAIL_ENABLED=true` 時寫入 `customer_mock_email`，不實際寄出；預設 false（不寫入，連結不外流）。員工以 `GET /api/admin/notifications/mock-emails` 讀取，沿用既有「通知詳情」權限（`/api/admin/notifications/*` GET），未新增權限資料。接真實寄信服務時只需替換 `CustomerEmailService.deliver()`。
+- **回應欄位**：`CustomerPayloads.View` 新增 `email`、`phone`、`emailVerified`（舊帳號為 null／false）。
+- **測試**：新增 `CustomerEmailPhoneIntegrationTest`（7 項：正規化與重複、並發同 Email、Email／手機登入與一致失敗訊息、驗證一次性與重寄節流、忘記／重設與撤銷登入、忘記密碼節流、模擬信件僅員工可讀）。`CustomerIdentityIntegrationTest` 回應欄位斷言更新；7 個測試的 Flyway 版本數 18→19。
+- **驗證結果**：隔離全新 DB（獨立 compose project、不同 port，測後刪除）`SHOP_MYSQL_INTEGRATION=true mvn package`：271 項，新增與顧客相關全部通過；**8 項失敗為既有問題**（`NotificationIntegrationTest` 7 項、`PreorderOrderIntegrationTest.notificationSafeSnapshots…` 1 項，mock 派送回 404），已在未修改的 main 上以同一環境重現相同 8 項，與本次無關，未修。本機 V19 套用成功，瀏覽器端到端：註冊、重複 Email／手機、手機登入、模擬驗證信與連結一次性、忘記密碼（不存在信箱不寫信）、重設後舊登入失效與新密碼登入。
+- **伺服器端需要**：受控切換套用 V19；沙盒／正式站若要展示驗證信與重設密碼，需在私有環境設 `MOCK_EMAIL_ENABLED=true`；沙盒每日重置的 `demo_customer` 可維持帳號名稱登入。
+- **未完成**：Facebook／LINE 登入（前端按鈕先顯示、無動作，待作者申請金鑰）；真實寄信服務；`NotificationIntegrationTest` 既有失敗。
+- **Codex 審查後修正（同日）**：
+  - 登入與重設密碼競爭：網站／App 登入寫入 session 後重讀密碼雜湊，已變更即撤回該 session 並 401。
+  - 純數字舊帳號：手機查不到時退回帳號名稱登入；舊版註冊拒絕手機格式帳號（400）。
+  - 註冊與驗證信同一交易（`CustomerRegistrationService`，網站與 App 共用），寄信資料寫入失敗整筆回滾。
+  - 驗證／重設連結改為 `#token=`（片段不送伺服器、不進 Referer）。
+  - 新增測試 4 項：連結過期、重設後 App access／refresh 與網站 refresh 皆失效、純數字舊帳號、寄信失敗回滾。隔離 DB 全套 275 項：新增 11 項全過，失敗僅既有 8 項。
+  - **第二輪（Codex 複查）**：重設密碼在交易提交後再撤銷一次所有登入（關閉「登入重讀時重設尚未提交」的競爭）；新註冊手機若等於既有純數字帳號名稱也視為已使用；新增測試：手機與舊帳號名稱衝突、同一連結並發只能成功一次、三個公開 POST 缺 CSRF 回 403。全套 277 項，新增 13 項全過，失敗僅既有 8 項。
+  - **未處理（接受風險）**：註冊分別回「Email／手機已被註冊」可被用來查詢是否為會員，這是作者要求的行為；目前沒有可靠的來源 IP（經 Cloudflare／Caddy）可做註冊節流，未加。
+
+---
+
 ## 2026-11-08：自動更新端到端驗證（ELPSY Shop（API））
 
 本次只增加此交接段落；不變更應用邏輯、資料庫、帳號、映像 recipe、CI 或部署契約。

@@ -51,7 +51,8 @@ public class SecurityConfig {
                 }))
                 .authorizeHttpRequests(auth -> auth.requestMatchers(org.springframework.http.HttpMethod.GET,"/api/catalog/preorders","/api/catalog/preorders/*","/api/catalog/products","/api/catalog/products/*","/api/catalog/products/*/image/*").permitAll()
                         .requestMatchers("/api/admin/login", "/api/admin/logout", "/api/auth/refresh", "/api/auth/csrf",
-                        "/api/customer/auth/register", "/api/customer/auth/login", "/api/customer/auth/refresh", "/api/customer/auth/logout").permitAll()
+                        "/api/customer/auth/register", "/api/customer/auth/login", "/api/customer/auth/refresh", "/api/customer/auth/logout",
+                        "/api/customer/auth/email/verify", "/api/customer/auth/password/forgot", "/api/customer/auth/password/reset").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.POST,"/api/payments/mock/callback","/api/preorder-payments/mock/callback").permitAll()
                         .anyRequest().authenticated());
         return http.build();
