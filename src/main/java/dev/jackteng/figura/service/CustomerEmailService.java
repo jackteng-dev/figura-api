@@ -47,7 +47,7 @@ public class CustomerEmailService {
     public void sendVerification(Customer customer) {
         if (customer.getEmail() == null || customer.getEmailVerifiedAt() != null) return;
         String token = issue(customer, VERIFY, VERIFY_TTL);
-        deliver(customer, VERIFY, "Figura｜請驗證你的 Email", "/shop/verify-email?token=" + token, VERIFY_TTL);
+        deliver(customer, VERIFY, "Figura｜請驗證你的 Email", "/shop/verify-email#token=" + token, VERIFY_TTL);
     }
 
     /** 已登入顧客重寄驗證信；每 60 秒最多一次。 */
@@ -81,7 +81,7 @@ public class CustomerEmailService {
         var customer = customers.byEmail(email);
         if (customer == null || !customer.isEnabled()) return;
         String token = issue(customer, RESET, RESET_TTL);
-        deliver(customer, RESET, "Figura｜重設密碼", "/shop/reset-password?token=" + token, RESET_TTL);
+        deliver(customer, RESET, "Figura｜重設密碼", "/shop/reset-password#token=" + token, RESET_TTL);
     }
 
     /** 重設密碼：token 一次性；成功後撤銷此顧客所有登入（網站與 App）。 */

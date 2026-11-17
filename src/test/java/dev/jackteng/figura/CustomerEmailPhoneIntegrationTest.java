@@ -29,7 +29,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 class CustomerEmailPhoneIntegrationTest {
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
-    @Autowired JdbcTemplate jdbc;
+    @org.springframework.boot.test.mock.mockito.SpyBean JdbcTemplate jdbc;
     @Autowired StringRedisTemplate redis;
     private final Set<String> ids = ConcurrentHashMap.newKeySet();
     private static final String PASSWORD = "integration-test-password-2026", NEW_PASSWORD = "integration-new-password-2026";
@@ -74,6 +74,7 @@ class CustomerEmailPhoneIntegrationTest {
         return link.substring(link.indexOf("token=") + 6);
     }
     @AfterEach void cleanup() {
+        org.mockito.Mockito.reset(jdbc);
         for (String id : ids) {
             jdbc.update("DELETE FROM customer_mock_email WHERE customer_id=?", id);
             jdbc.update("DELETE FROM customer_email_token WHERE customer_id=?", id);
@@ -185,7 +186,61 @@ class CustomerEmailPhoneIntegrationTest {
         var list = call(admin, "GET", "/admin/notifications/mock-emails", null);
         assertEquals(200, list.getResponse().getStatus());
         boolean found = false;
-        for (var item : data(list).path("items")) if (item.path("recipient").asText().equals(email.toLowerCase(Locale.ROOT))) { found = true; assertTrue(item.path("link").asText().startsWith("/shop/verify-email?token=")); }
+        for (var item : data(list).path("items")) if (item.path("recipient").asText().equals(email.toLowerCase(Locale.ROOT))) { found = true; assertTrue(item.path("link").asText().startsWith("/shop/verify-email#token=")); }
         assertTrue(found);
+    }
+
+    @Test void expiredLinksAreRejected() throws Exception {
+        String email = email(); String id = data(register(email, phone())).path("id").asText();
+        String token = latestToken(id, "VERIFY");
+        jdbc.update("UPDATE customer_email_token SET expires_at=? WHERE customer_id=?", java.time.LocalDateTime.now().minusMinutes(1), id);
+        assertEquals(400, call(guest(), "POST", "/customer/auth/email/verify", Map.of("token", token)).getResponse().getStatus());
+        assertEquals(200, call(guest(), "POST", "/customer/auth/password/forgot", Map.of("email", email)).getResponse().getStatus());
+        String reset = latestToken(id, "RESET");
+        jdbc.update("UPDATE customer_email_token SET expires_at=? WHERE customer_id=? AND purpose='RESET'", java.time.LocalDateTime.now().minusMinutes(1), id);
+        assertEquals(400, call(guest(), "POST", "/customer/auth/password/reset", Map.of("token", reset, "password", NEW_PASSWORD)).getResponse().getStatus());
+        assertEquals(200, loginRaw(email, PASSWORD).getResponse().getStatus());
+    }
+
+    private MvcResult mobile(String method, String p, String bearer, Object body) throws Exception {
+        var b = path(request(org.springframework.http.HttpMethod.valueOf(method), "/figura/api" + p), p);
+        if (bearer != null) b.header("Authorization", "Bearer " + bearer);
+        if (body != null) b.contentType("application/json").content(json.writeValueAsBytes(body));
+        return mvc.perform(b).andReturn();
+    }
+
+    @Test void resetRevokesAppSessionsToo() throws Exception {
+        String email = email(); String id = data(register(email, phone())).path("id").asText();
+        var app = data(mobile("POST", "/mobile/customer/auth/login", null, Map.of("username", email, "password", PASSWORD, "deviceId", UUID.randomUUID().toString(), "rememberMe", false)));
+        String access = app.path("accessToken").asText(), refresh = app.path("refreshToken").asText();
+        assertEquals(200, mobile("GET", "/mobile/customer/me", access, null).getResponse().getStatus());
+        var web = login(email, PASSWORD);
+        call(guest(), "POST", "/customer/auth/password/forgot", Map.of("email", email));
+        assertEquals(200, call(guest(), "POST", "/customer/auth/password/reset", Map.of("token", latestToken(id, "RESET"), "password", NEW_PASSWORD)).getResponse().getStatus());
+        assertEquals(401, mobile("GET", "/mobile/customer/me", access, null).getResponse().getStatus());
+        assertEquals(401, mobile("POST", "/mobile/customer/auth/refresh", null, Map.of("refreshToken", refresh)).getResponse().getStatus());
+        assertEquals(401, call(web, "POST", "/customer/auth/refresh", null).getResponse().getStatus());
+    }
+
+    @Test void numericLegacyUsernameStillLogsInAndPhoneLikeLegacyNamesAreRejected() throws Exception {
+        String legacy = "9" + String.format("%07d", new Random().nextInt(10_000_000));
+        var r = call(guest(), "POST", "/customer/auth/register", Map.of("username", legacy, "password", PASSWORD, "displayName", "舊帳號"));
+        assertEquals(201, r.getResponse().getStatus()); ids.add(data(r).path("id").asText());
+        assertEquals(200, loginRaw(legacy, PASSWORD).getResponse().getStatus());
+        // 舊資料中可能存在的手機格式帳號：手機查不到時仍能以帳號名稱登入
+        String phoneLike = phone();
+        jdbc.update("UPDATE customer SET username=? WHERE id=?", phoneLike, data(r).path("id").asText());
+        assertEquals(200, loginRaw(phoneLike, PASSWORD).getResponse().getStatus());
+        assertEquals(400, call(guest(), "POST", "/customer/auth/register", Map.of("username", phone(), "password", PASSWORD, "displayName", "手機帳號")).getResponse().getStatus());
+    }
+
+    @Test void registrationRollsBackWhenVerificationMailCannotBeStored() throws Exception {
+        String email = email(), phone = phone();
+        org.mockito.Mockito.doThrow(new org.springframework.dao.DataAccessResourceFailureException("synthetic mail failure"))
+                .when(jdbc).update(org.mockito.ArgumentMatchers.startsWith("INSERT INTO customer_mock_email"), org.mockito.ArgumentMatchers.any(Object[].class));
+        try { assertEquals(500, register(email, phone).getResponse().getStatus()); }
+        finally { org.mockito.Mockito.reset(jdbc); }
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM customer WHERE email=?", Integer.class, email.toLowerCase(Locale.ROOT)));
+        assertEquals(201, register(email, phone).getResponse().getStatus());
     }
 }

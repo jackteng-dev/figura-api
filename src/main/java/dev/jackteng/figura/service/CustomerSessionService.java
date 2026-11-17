@@ -40,6 +40,8 @@ public class CustomerSessionService {
             customer.setUsername("m_"+UUID.randomUUID().toString().replace("-","").substring(0,24));
             customer.setDisplayName("會員"+phone.substring(phone.length()-4));
         } else {
+            // 舊版（App）帳號名稱不可是手機格式，避免與手機登入互相混淆
+            if (CustomerPayloads.normalizePhone(input.username())!=null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"帳號不可使用手機號碼格式");
             customer.setUsername(normalize(input.username()));customer.setDisplayName(input.displayName().strip());
         }
         try { customers.insert(customer); }
@@ -57,8 +59,20 @@ public class CustomerSessionService {
         String value=raw.strip();
         if (value.contains("@")) { String email=CustomerPayloads.normalizeEmail(value); return email==null?null:customers.byEmail(email); }
         String phone=CustomerPayloads.normalizePhone(value);
-        if (phone!=null) return customers.byPhone(phone);
+        if (phone!=null) { var byPhone=customers.byPhone(phone); if (byPhone!=null) return byPhone; }
+        // 手機查不到時退回舊帳號名稱（舊規則允許純數字帳號，例如 0912345678）
         return CustomerPayloads.USERNAME.matcher(value).matches()?customers.byUsername(normalize(value)):null;
+    }
+    /**
+     * 登入與重設密碼競爭：登入先讀到舊密碼雜湊並驗證通過，若在 revokeAll() 之後才寫入 session，舊密碼會留下有效登入。
+     * 寫入 session 後重讀雜湊；已變更就撤回剛寫入的 session 並視為登入失敗。
+     */
+    private void ensurePasswordUnchanged(Customer verified,Map<String,Object> claims) {
+        var current=customers.byId(verified.getId());
+        if (current==null || !current.isEnabled() || !Objects.equals(current.getPasswordHash(),verified.getPasswordHash())) {
+            redis.execute(REVOKE,List.of(key(claims)),claims.get("jti"));
+            throw badCredentials();
+        }
     }
     /** 撤銷此顧客所有網站與 App 登入（重設密碼後使用）。 */
     public void revokeAll(String customerId) {
@@ -71,7 +85,9 @@ public class CustomerSessionService {
         var customer=byLoginIdentifier(input.username());
         if (customer==null || !customer.isEnabled() || !passwords.matches(input.password(),customer.getPasswordHash())) throw badCredentials();
         var claims=claims(customer,input.deviceId(),UUID.randomUUID().toString(),input.rememberMe());
-        redis.opsForValue().set(key(claims),(String)claims.get("jti"),JwtUtil.REFRESH_LIFETIME);writeCookies(response,claims);
+        redis.opsForValue().set(key(claims),(String)claims.get("jti"),JwtUtil.REFRESH_LIFETIME);
+        ensurePasswordUnchanged(customer,claims);
+        writeCookies(response,claims);
         return CustomerPayloads.View.from(customer);
     }
     public Customer authenticate(String token) {
@@ -85,6 +101,7 @@ public class CustomerSessionService {
         if(customer==null || !customer.isEnabled() || !passwords.matches(input.password(),customer.getPasswordHash()))throw badCredentials();
         var claims=mobileClaims(customer,input.deviceId());
         redis.opsForValue().set(key(claims),(String)claims.get("jti"),JwtUtil.REFRESH_LIFETIME);
+        ensurePasswordUnchanged(customer,claims);
         return tokens(customer,claims);
     }
     public Customer mobileAuthenticate(String token) {

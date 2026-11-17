@@ -18,11 +18,11 @@ import org.springframework.web.bind.annotation.*;
 public class CustomerController {
     private final CustomerSessionService sessions;
     private final CustomerEmailService emails;
-    public CustomerController(CustomerSessionService sessions,CustomerEmailService emails){this.sessions=sessions;this.emails=emails;}
+    private final dev.jackteng.figura.service.CustomerRegistrationService registration;
+    public CustomerController(CustomerSessionService sessions,CustomerEmailService emails,dev.jackteng.figura.service.CustomerRegistrationService registration){this.sessions=sessions;this.emails=emails;this.registration=registration;}
     @PostMapping("/customer/auth/register") @ResponseStatus(HttpStatus.CREATED)
     public Result<CustomerPayloads.View> register(@RequestBody @Valid CustomerPayloads.Registration input){
-        var customer=sessions.register(input);
-        emails.sendVerification(customer); // 新版註冊（有 Email）寄出驗證信；舊版無 Email 時不動作
+        var customer=registration.register(input); // 建立帳號與驗證信同一交易
         return Result.success(CustomerPayloads.View.from(customer));
     }
     @PostMapping("/customer/auth/email/verify")

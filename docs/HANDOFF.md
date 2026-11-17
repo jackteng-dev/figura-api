@@ -15,6 +15,13 @@
 - **驗證結果**：隔離全新 DB（獨立 compose project、不同 port，測後刪除）`SHOP_MYSQL_INTEGRATION=true mvn package`：271 項，新增與顧客相關全部通過；**8 項失敗為既有問題**（`NotificationIntegrationTest` 7 項、`PreorderOrderIntegrationTest.notificationSafeSnapshots…` 1 項，mock 派送回 404），已在未修改的 main 上以同一環境重現相同 8 項，與本次無關，未修。本機 V19 套用成功，瀏覽器端到端：註冊、重複 Email／手機、手機登入、模擬驗證信與連結一次性、忘記密碼（不存在信箱不寫信）、重設後舊登入失效與新密碼登入。
 - **伺服器端需要**：受控切換套用 V19；沙盒／正式站若要展示驗證信與重設密碼，需在私有環境設 `MOCK_EMAIL_ENABLED=true`；沙盒每日重置的 `demo_customer` 可維持帳號名稱登入。
 - **未完成**：Facebook／LINE 登入（前端按鈕先顯示、無動作，待作者申請金鑰）；真實寄信服務；`NotificationIntegrationTest` 既有失敗。
+- **Codex 審查後修正（同日）**：
+  - 登入與重設密碼競爭：網站／App 登入寫入 session 後重讀密碼雜湊，已變更即撤回該 session 並 401。
+  - 純數字舊帳號：手機查不到時退回帳號名稱登入；舊版註冊拒絕手機格式帳號（400）。
+  - 註冊與驗證信同一交易（`CustomerRegistrationService`，網站與 App 共用），寄信資料寫入失敗整筆回滾。
+  - 驗證／重設連結改為 `#token=`（片段不送伺服器、不進 Referer）。
+  - 新增測試 4 項：連結過期、重設後 App access／refresh 與網站 refresh 皆失效、純數字舊帳號、寄信失敗回滾。隔離 DB 全套 275 項：新增 11 項全過，失敗僅既有 8 項。
+  - **未處理（接受風險）**：註冊分別回「Email／手機已被註冊」可被用來查詢是否為會員，這是作者要求的行為；目前沒有可靠的來源 IP（經 Cloudflare／Caddy）可做註冊節流，未加。
 
 ---
 
