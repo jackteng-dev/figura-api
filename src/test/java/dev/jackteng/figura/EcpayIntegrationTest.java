@@ -153,6 +153,9 @@ class EcpayIntegrationTest {
         assertEquals(400,callback(sign(paid(s,"")),null).getResponse().getStatus());
         assertEquals(400,callback(good,"RtnCode=1").getResponse().getStatus());
         var simulated=paid(s,no);simulated.put("SimulatePaid","1");assertEquals("1|OK",body(callback(sign(simulated),null)));
+        var renamed=new TreeMap<>(sign(simulated));renamed.put("simulatepaid",renamed.remove("SimulatePaid"));assertEquals("1|OK",body(callback(renamed,null)));
+        var doubled=new TreeMap<>(sign(paid(s,no)));doubled.put("simulatepaid","1");assertEquals(400,callback(doubled,null).getResponse().getStatus());
+        var noFlag=paid(s,no);noFlag.remove("SimulatePaid");assertEquals(400,callback(sign(noFlag),null).getResponse().getStatus());
         assertEquals(401,call(guest(),"GET","/payments/ecpay/callback",null).getResponse().getStatus());
         assertEquals("PENDING_PAYMENT",status(o));assertEquals("INITIATED",paymentStatus(s));assertEquals(5,physical(f));assertEquals(1,reserved(f));assertEquals(0,events(s));
         if(gateway.enabled()){String pid=s.path("payment").path("id").asText();var mock=new HashMap<String,Object>(Map.of("eventId",UUID.randomUUID().toString(),"paymentId",pid,"transactionId","mock_"+pid,"amountTwd",1280,"currency","TWD","outcome","SUCCESS"));String raw=json.writeValueAsString(mock),ts=Long.toString(java.time.Instant.now().getEpochSecond());

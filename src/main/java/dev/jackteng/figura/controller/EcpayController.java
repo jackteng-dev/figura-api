@@ -15,7 +15,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.util.HashMap;
+import java.util.TreeMap;
 import java.util.Map;
 
 /**
@@ -40,11 +40,12 @@ public class EcpayController {
     public ResponseEntity<String> callback(HttpServletRequest request) {
         if (request.getQueryString() != null || request.getParameterMap().size() > 64)
             return reply(400, "0|Parameter Error");
-        Map<String, String> params = new HashMap<>();
+        // CheckMacValue 不分欄位大小寫，所以欄位也一律不分大小寫：同名（忽略大小寫）重複即拒絕。
+        Map<String, String> params = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         for (var entry : request.getParameterMap().entrySet()) {
-            if (entry.getValue().length != 1 || entry.getKey().length() > 64 || entry.getValue()[0].length() > 512)
+            if (entry.getValue().length != 1 || entry.getKey().length() > 64 || entry.getValue()[0].length() > 512
+                    || params.putIfAbsent(entry.getKey(), entry.getValue()[0]) != null)
                 return reply(400, "0|Parameter Error");
-            params.put(entry.getKey(), entry.getValue()[0]);
         }
         String tradeNo = String.valueOf(params.get("MerchantTradeNo")).replaceAll("[^0-9A-Za-z]", "");
         try {

@@ -53,10 +53,12 @@ public class PaymentService {
  public record EcpayOutcome(boolean applied,String disposition){}
  @Transactional(isolation=Isolation.READ_COMMITTED) public EcpayOutcome receiveEcpay(Map<String,String> params){
   ecpay.requireEnabled();
+  // 簽章計算不分欄位大小寫；讀值也必須不分大小寫，且不可有僅大小寫不同的重複欄位，否則可藉改名讓驗簽與判讀不一致。
+  var normalized=new TreeMap<String,String>(String.CASE_INSENSITIVE_ORDER);for(var e:params.entrySet())if(normalized.putIfAbsent(e.getKey(),e.getValue())!=null)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Parameter Error");params=normalized;
   if(!ecpay.verify(params))throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"CheckMacValue Error");
-  String merchant=params.get("MerchantID"),tradeNo=params.get("MerchantTradeNo"),gatewayNo=params.getOrDefault("TradeNo",""),rtn=params.get("RtnCode"),amount=params.get("TradeAmt"),simulated=params.getOrDefault("SimulatePaid","0");
+  String merchant=params.get("MerchantID"),tradeNo=params.get("MerchantTradeNo"),gatewayNo=params.getOrDefault("TradeNo",""),rtn=params.get("RtnCode"),amount=params.get("TradeAmt"),simulated=params.get("SimulatePaid");
   if(!ecpay.merchantId().equals(merchant))throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"MerchantID Error");
-  if(tradeNo==null||!tradeNo.matches("[0-9A-Za-z]{1,20}")||rtn==null||!rtn.matches("-?[0-9]{1,8}")||amount==null||!amount.matches("[0-9]{1,12}")||!gatewayNo.matches("[0-9A-Za-z]{0,20}")||!simulated.matches("[01]"))throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Parameter Error");
+  if(tradeNo==null||!tradeNo.matches("[0-9A-Za-z]{1,20}")||rtn==null||!rtn.matches("-?[0-9]{1,8}")||amount==null||!amount.matches("[0-9]{1,12}")||!gatewayNo.matches("[0-9A-Za-z]{0,20}")||simulated==null||!simulated.matches("[01]"))throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Parameter Error");
   if("1".equals(simulated)&&!ecpay.acceptSimulated())return new EcpayOutcome(false,"IGNORED_SIMULATED");
   var known=payments.ecpay(tradeNo);if(known==null)throw missing();
   String outcome="1".equals(rtn)?"SUCCESS":"FAILURE";
