@@ -18,7 +18,11 @@ public final class PaymentPayloads {
   @JsonAnySetter public void unknown(String name,Object value){throw new IllegalArgumentException("不支援的欄位");}
  }
  public record View(String id,String orderId,String status,long amountTwd,String currency,String provider,LocalDateTime createdAt,LocalDateTime settledAt,RefundPayloads.Progress refund){}
- public record Options(boolean enabled,boolean canStart,List<View> items){}
+ public record Options(boolean enabled,boolean canStart,List<View> items,boolean ecpayCanStart){
+  public Options(boolean enabled,boolean canStart,List<View> items){this(enabled,canStart,items,false);}
+ }
+ public record EcpayCheckout(String action,java.util.Map<String,String> fields){}
+ public record EcpayStarted(View payment,boolean replayed,EcpayCheckout checkout){}
  public record CallbackAck(String eventId,String disposition,boolean replayed,String paymentId,String orderId){}
  public record Started(View payment,boolean replayed){}
  public record Receipt(String eventId,String disposition,boolean replayed,View payment,OrderPayloads.View order){}

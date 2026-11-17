@@ -13,7 +13,9 @@ public interface PaymentMapper {
  @Select("SELECT * FROM mock_payment WHERE id=#{id} FOR UPDATE") MockPayment lock(String id);
  @Select("SELECT * FROM mock_payment WHERE customer_id=#{customer} AND request_id=#{request}") MockPayment request(@Param("customer") String customer,@Param("request") String request);
  @Select("SELECT * FROM mock_payment WHERE order_id=#{order} ORDER BY created_at DESC,id DESC") List<MockPayment> list(String order);
- @Insert("INSERT INTO mock_payment(id,order_id,customer_id,request_id,transaction_id,expected_order_version,amount_twd) VALUES(#{id},#{orderId},#{customerId},#{requestId},#{transactionId},#{expectedOrderVersion},#{amountTwd})") void insert(MockPayment payment);
+ @Insert("INSERT INTO mock_payment(id,order_id,customer_id,request_id,transaction_id,expected_order_version,amount_twd,provider) VALUES(#{id},#{orderId},#{customerId},#{requestId},#{transactionId},#{expectedOrderVersion},#{amountTwd},COALESCE(#{provider},'MOCK'))") void insert(MockPayment payment);
+ @Select("SELECT * FROM mock_payment WHERE transaction_id=#{tradeNo} AND provider='ECPAY'") MockPayment ecpay(String tradeNo);
+ @Update("UPDATE mock_payment SET gateway_trade_no=#{tradeNo} WHERE id=#{id} AND provider='ECPAY' AND gateway_trade_no IS NULL") int gatewayTradeNo(@Param("id") String id,@Param("tradeNo") String tradeNo);
  @Update("UPDATE mock_payment SET status=#{status},settled_at=CURRENT_TIMESTAMP(6) WHERE id=#{id}") void state(@Param("id") String id,@Param("status") String status);
  @Select("SELECT * FROM mock_payment_event WHERE event_id=#{id}") MockPaymentEvent event(String id);
  @Insert("INSERT INTO mock_payment_event(event_id,payment_id,fingerprint,outcome,disposition) VALUES(#{eventId},#{paymentId},#{fingerprint},#{outcome},#{disposition})") void append(MockPaymentEvent event);

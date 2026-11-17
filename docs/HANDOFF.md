@@ -1,5 +1,17 @@
 # Figura（原 ELPSY Shop） 後端交接
 
+## 2026-11-17：綠界（ECPay）測試環境信用卡付款（V20，含 schema 變更）
+
+分支 `feat/ecpay`（基於 `feat/customer-email-phone`，需與前端 `feat/ecpay` 一起上線）。**只接綠界測試環境，不會實際收款**；現貨訂單限定，預購仍只有付款模擬。
+
+- **V20**：`mock_payment` 新增 `provider`（預設 `MOCK`，可為 `ECPAY`）與 `gateway_trade_no`（綠界 TradeNo，僅 ECPAY）。純新增欄位，舊程式插入仍得到 MOCK。**需作者受控切換後才能 merge。**
+- **設定（私有環境變數，預設停用，不在 yml）**：`ECPAY_ENABLED`、`ECPAY_MERCHANT_ID`、`ECPAY_HASH_KEY`、`ECPAY_HASH_IV`、`ECPAY_RETURN_URL`（綠界伺服器回呼，公開 https）、`ECPAY_CLIENT_BACK_URL`（如 `https://<站>/shop/orders`，自動加 `?ecpay=<訂單ID>`）、`ECPAY_ACCEPT_SIMULATED_PAID`（預設 false）。`ECPAY_CHECKOUT_URL` 只允許綠界測試 AIO 網址，啟動時檢查；http 只允許 localhost。
+- **建立**：`POST /customer/orders/{id}/ecpay-payments`（Cookie＋CSRF，`requestId`／`expectedOrderVersion`，冪等同 mock）。金額、MerchantTradeNo（`FG`＋18 碼）取伺服器快照，回傳表單欄位與 CheckMacValue，前端以表單 POST 到綠界。未完成的綠界付款在同一訂單重新付款時改為 FAILED（留 event），若之後才收到成功通知 → REVIEW_REQUIRED，不扣庫、不復活。
+- **回呼**：`POST /payments/ecpay/callback`（免 Cookie／CSRF，只收 form、拒 query string 與重複欄位）。常數時間核對 CheckMacValue → MerchantID → 交易編號 → 金額，交給既有 `PaymentService.process` 核心（同交易扣庫、PAID、通知 outbox）。eventId = name-based UUID(MerchantTradeNo|TradeNo|RtnCode)，重送不重複扣庫。成功回 `1|OK`；驗證失敗回 `0|…`（綠界會重送）。`SimulatePaid=1` 預設只回 `1|OK` 不變更。ClientBackURL 只是前端頁面，**不改任何狀態**（避免 camp 專案未驗簽 return 被當成付款成功的漏洞）。
+- 退款仍為模擬，不會呼叫綠界退刷；ATM／超商等非同步付款未做。
+- **測試**：`EcpayGatewayTest`（官方文件 CheckMacValue 範例比對、設定檢查）、`EcpayIntegrationTest` 5 項（表單／重送、簽章成功只扣一次、偽造／竄改／金額不符／錯商店／未知編號／query／SimulatePaid 都不變更、mock 回呼不能結算綠界付款、重新付款與晚到成功待核對）。Flyway 計數 19→20。
+- **上線待辦**：公開沙盒必須讓綠界伺服器能 POST 到 ReturnURL；Cloudflare 若擋（如先前擋 Python UA），需為 `/figura/api/payments/ecpay/callback` 加例外。本機無法收到綠界回呼，只能用簽章測試驗證。
+
 ## 2026-11-17：顧客手機＋Email＋密碼註冊、Email 驗證、忘記密碼（V19，含 schema 變更）
 
 分支 `feat/customer-email-phone`。**有 schema 變更（`src/main/resources/db/demo-migration/V19__…`，CD 受保護路徑），PR 不可直接 merge，需作者在伺服器端受控切換。** V1–V18 未改；V19 只新增可 NULL 欄位與新表，舊版程式可在新 schema 上運作。
