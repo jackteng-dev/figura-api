@@ -28,16 +28,48 @@ public class CustomerSessionService {
     public CustomerSessionService(CustomerMapper customers, BCryptPasswordEncoder passwords, StringRedisTemplate redis, JwtUtil jwt) {
         this.customers=customers;this.passwords=passwords;this.redis=redis;this.jwt=jwt;
     }
-    public CustomerPayloads.View register(CustomerPayloads.Registration input) {
-        var customer=new Customer();customer.setId(UUID.randomUUID().toString());customer.setUsername(normalize(input.username()));
-        customer.setPasswordHash(passwords.encode(input.password()));customer.setDisplayName(input.displayName().strip());
+    public Customer register(CustomerPayloads.Registration input) {
+        var customer=new Customer();customer.setId(UUID.randomUUID().toString());
+        customer.setPasswordHash(passwords.encode(input.password()));
+        if (input.contactStyle()) {
+            // V19 新版：手機＋信箱＋密碼。內部自動產生 username（不對外使用），暱稱預設「會員＋手機末四碼」，可在會員中心修改。
+            String email=CustomerPayloads.normalizeEmail(input.email()), phone=CustomerPayloads.normalizePhone(input.phone());
+            if (customers.byEmail(email)!=null) throw new ResponseStatusException(HttpStatus.CONFLICT,"此 Email 已被註冊");
+            if (customers.byPhone(phone)!=null) throw new ResponseStatusException(HttpStatus.CONFLICT,"此手機號碼已被註冊");
+            customer.setEmail(email);customer.setPhone(phone);
+            customer.setUsername("m_"+UUID.randomUUID().toString().replace("-","").substring(0,24));
+            customer.setDisplayName("會員"+phone.substring(phone.length()-4));
+        } else {
+            customer.setUsername(normalize(input.username()));customer.setDisplayName(input.displayName().strip());
+        }
         try { customers.insert(customer); }
-        catch (DuplicateKeyException e) { throw new ResponseStatusException(HttpStatus.CONFLICT,"帳號已被使用"); }
-        return CustomerPayloads.View.from(customers.byId(customer.getId()));
+        catch (DuplicateKeyException e) {
+            // 同時註冊的競爭：以違反的唯一鍵判斷訊息
+            String m=String.valueOf(e.getMostSpecificCause().getMessage());
+            if (m.contains("uk_customer_email")) throw new ResponseStatusException(HttpStatus.CONFLICT,"此 Email 已被註冊");
+            if (m.contains("uk_customer_phone")) throw new ResponseStatusException(HttpStatus.CONFLICT,"此手機號碼已被註冊");
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"帳號已被使用");
+        }
+        return customers.byId(customer.getId());
+    }
+    /** 依登入識別找顧客：含 @ 視為 Email，符合台灣手機視為手機，否則為舊帳號名稱。 */
+    private Customer byLoginIdentifier(String raw) {
+        String value=raw.strip();
+        if (value.contains("@")) { String email=CustomerPayloads.normalizeEmail(value); return email==null?null:customers.byEmail(email); }
+        String phone=CustomerPayloads.normalizePhone(value);
+        if (phone!=null) return customers.byPhone(phone);
+        return CustomerPayloads.USERNAME.matcher(value).matches()?customers.byUsername(normalize(value)):null;
+    }
+    /** 撤銷此顧客所有網站與 App 登入（重設密碼後使用）。 */
+    public void revokeAll(String customerId) {
+        for (String prefix : List.of("shop:customer:session:","shop:customer:mobile:session:")) {
+            var keys=redis.keys(prefix+customerId+":*");
+            if (keys!=null && !keys.isEmpty()) redis.delete(keys);
+        }
     }
     public CustomerPayloads.View login(CustomerPayloads.Login input,HttpServletResponse response) {
-        var customer=customers.byUsername(normalize(input.username()));
-        if (customer==null || !customer.isEnabled() || !passwords.matches(input.password(),customer.getPasswordHash())) throw unauthorized();
+        var customer=byLoginIdentifier(input.username());
+        if (customer==null || !customer.isEnabled() || !passwords.matches(input.password(),customer.getPasswordHash())) throw badCredentials();
         var claims=claims(customer,input.deviceId(),UUID.randomUUID().toString(),input.rememberMe());
         redis.opsForValue().set(key(claims),(String)claims.get("jti"),JwtUtil.REFRESH_LIFETIME);writeCookies(response,claims);
         return CustomerPayloads.View.from(customer);
@@ -49,8 +81,8 @@ public class CustomerSessionService {
     }
     // Native tokens never travel in website cookies and use a separate Redis/realm boundary.
     public dev.jackteng.figura.dto.MobileAuthPayloads.Tokens mobileLogin(CustomerPayloads.Login input) {
-        var customer=customers.byUsername(normalize(input.username()));
-        if(customer==null || !customer.isEnabled() || !passwords.matches(input.password(),customer.getPasswordHash()))throw unauthorized();
+        var customer=byLoginIdentifier(input.username());
+        if(customer==null || !customer.isEnabled() || !passwords.matches(input.password(),customer.getPasswordHash()))throw badCredentials();
         var claims=mobileClaims(customer,input.deviceId());
         redis.opsForValue().set(key(claims),(String)claims.get("jti"),JwtUtil.REFRESH_LIFETIME);
         return tokens(customer,claims);
@@ -116,5 +148,7 @@ public class CustomerSessionService {
         jwt.setJwtCookie(response,REFRESH_COOKIE,jwt.genRefreshToken(claims),remember?(int)JwtUtil.REFRESH_LIFETIME.toSeconds():-1);
     }
     private String normalize(String username){return username.toLowerCase(Locale.ROOT);}
+    /** 登入失敗一律同一訊息，不揭露帳號是否存在。 */
+    private ResponseStatusException badCredentials(){return new ResponseStatusException(HttpStatus.UNAUTHORIZED,"帳號或密碼不正確");}
     private ResponseStatusException unauthorized(){return new ResponseStatusException(HttpStatus.UNAUTHORIZED,"顧客登入狀態無效");}
 }

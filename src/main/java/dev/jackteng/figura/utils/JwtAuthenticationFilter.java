@@ -23,7 +23,8 @@ import java.util.Set;
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final Set<String> PUBLIC = Set.of("/api/admin/login", "/api/admin/logout", "/api/auth/refresh", "/api/auth/csrf",
-            "/api/customer/auth/register", "/api/customer/auth/login", "/api/customer/auth/refresh", "/api/customer/auth/logout");
+            "/api/customer/auth/register", "/api/customer/auth/login", "/api/customer/auth/refresh", "/api/customer/auth/logout",
+            "/api/customer/auth/email/verify", "/api/customer/auth/password/forgot", "/api/customer/auth/password/reset");
     private final AdminSessionService sessions;
     private final CustomerSessionService customers;
     private final AntPathMatcher matcher = new AntPathMatcher();
@@ -71,6 +72,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     public static boolean customerRouteAllowed(String path,String method) {
         var matcher=new AntPathMatcher();
         return (path.equals("/api/customer/me")&&(method.equals("GET")||method.equals("PATCH")))
+                    || (path.equals("/api/customer/email/verification")&&method.equals("POST"))
                     || (path.equals("/api/customer/cart")&&method.equals("GET"))
                     || (matcher.match("/api/customer/cart/items/*",path)&&(method.equals("PUT")||method.equals("DELETE")))
                     || (path.equals("/api/customer/orders")&&(method.equals("GET")||method.equals("POST")))
