@@ -35,7 +35,8 @@ public class CustomerSessionService {
             // V19 新版：手機＋信箱＋密碼。內部自動產生 username（不對外使用），暱稱預設「會員＋手機末四碼」，可在會員中心修改。
             String email=CustomerPayloads.normalizeEmail(input.email()), phone=CustomerPayloads.normalizePhone(input.phone());
             if (customers.byEmail(email)!=null) throw new ResponseStatusException(HttpStatus.CONFLICT,"此 Email 已被註冊");
-            if (customers.byPhone(phone)!=null) throw new ResponseStatusException(HttpStatus.CONFLICT,"此手機號碼已被註冊");
+            // 舊帳號允許純數字名稱：手機號碼若等於既有帳號名稱，同樣視為已被使用，避免舊會員失去登入通道
+            if (customers.byPhone(phone)!=null || customers.byUsername(phone)!=null) throw new ResponseStatusException(HttpStatus.CONFLICT,"此手機號碼已被註冊");
             customer.setEmail(email);customer.setPhone(phone);
             customer.setUsername("m_"+UUID.randomUUID().toString().replace("-","").substring(0,24));
             customer.setDisplayName("會員"+phone.substring(phone.length()-4));

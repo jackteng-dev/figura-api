@@ -93,7 +93,16 @@ public class CustomerEmailService {
         customers.updatePassword(customer.getId(), passwords.encode(password));
         // 其他尚未使用的重設連結一併作廢
         db.update("UPDATE customer_email_token SET used_at=CURRENT_TIMESTAMP(6) WHERE customer_id=? AND purpose=? AND used_at IS NULL", customer.getId(), RESET);
+        // 交易內先撤銷一次；提交後再撤銷一次。登入在寫入 session 後會重讀密碼雜湊：
+        // 若重讀發生在提交前（仍讀到舊雜湊），它寫入的 session 必定早於提交後的這次撤銷，因此會被清掉；
+        // 若發生在提交後，會讀到新雜湊而自行撤回。兩種時序都不會留下舊密碼的有效登入。
         sessions.revokeAll(customer.getId());
+        String customerId = customer.getId();
+        if (org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(new org.springframework.transaction.support.TransactionSynchronization() {
+                @Override public void afterCommit() { sessions.revokeAll(customerId); }
+            });
+        }
     }
 
     public record MockEmail(String id, String customerId, String purpose, String recipient, String subject, String link,

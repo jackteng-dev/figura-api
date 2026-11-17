@@ -243,4 +243,30 @@ class CustomerEmailPhoneIntegrationTest {
         assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM customer WHERE email=?", Integer.class, email.toLowerCase(Locale.ROOT)));
         assertEquals(201, register(email, phone).getResponse().getStatus());
     }
+
+    @Test void phoneMatchingALegacyUsernameIsTaken() throws Exception {
+        String legacy = phone();
+        var r = call(guest(), "POST", "/customer/auth/register", Map.of("username", "legacy_" + UUID.randomUUID().toString().substring(0, 8), "password", PASSWORD, "displayName", "舊帳號"));
+        String id = data(r).path("id").asText(); ids.add(id);
+        jdbc.update("UPDATE customer SET username=? WHERE id=?", legacy, id);
+        var dup = register(email(), legacy);
+        assertEquals(409, dup.getResponse().getStatus()); assertEquals("此手機號碼已被註冊", body(dup).path("message").asText());
+        assertEquals(200, loginRaw(legacy, PASSWORD).getResponse().getStatus());
+    }
+
+    @Test void concurrentTokenUseHasOneWinnerAndPublicPostsNeedCsrf() throws Exception {
+        String id = data(register(email(), phone())).path("id").asText();
+        String token = latestToken(id, "VERIFY");
+        var pool = Executors.newFixedThreadPool(2); var start = new CountDownLatch(1);
+        try {
+            var a = pool.submit(() -> { start.await(); return call(guest(), "POST", "/customer/auth/email/verify", Map.of("token", token)).getResponse().getStatus(); });
+            var b = pool.submit(() -> { start.await(); return call(guest(), "POST", "/customer/auth/email/verify", Map.of("token", token)).getResponse().getStatus(); });
+            start.countDown();
+            assertEquals(Set.of(200, 400), Set.of(a.get(15, TimeUnit.SECONDS), b.get(15, TimeUnit.SECONDS)));
+        } finally { pool.shutdownNow(); }
+        for (String p : List.of("/customer/auth/email/verify", "/customer/auth/password/forgot", "/customer/auth/password/reset")) {
+            var noCsrf = mvc.perform(path(post("/figura/api" + p), p).contentType("application/json").content("{}")).andReturn();
+            assertEquals(403, noCsrf.getResponse().getStatus(), p);
+        }
+    }
 }
