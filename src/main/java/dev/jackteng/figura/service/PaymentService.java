@@ -60,6 +60,8 @@ public class PaymentService {
   if(!ecpay.merchantId().equals(merchant))throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"MerchantID Error");
   if(tradeNo==null||!tradeNo.matches("[0-9A-Za-z]{1,20}")||rtn==null||!rtn.matches("-?[0-9]{1,8}")||amount==null||!amount.matches("[0-9]{1,12}")||!gatewayNo.matches("[0-9A-Za-z]{0,20}")||simulated==null||!simulated.matches("[01]"))throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Parameter Error");
   if("1".equals(simulated)&&!ecpay.acceptSimulated())return new EcpayOutcome(false,"IGNORED_SIMULATED");
+  // 簽章也不分欄位值大小寫：編號一律轉大寫再查詢與去重（本站 MerchantTradeNo 只產生大寫）。
+  tradeNo=tradeNo.toUpperCase(java.util.Locale.ROOT);gatewayNo=gatewayNo.toUpperCase(java.util.Locale.ROOT);
   var known=payments.ecpay(tradeNo);if(known==null)throw missing();
   String outcome="1".equals(rtn)?"SUCCESS":"FAILURE";
   if("SUCCESS".equals(outcome)&&gatewayNo.isEmpty())throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Parameter Error");

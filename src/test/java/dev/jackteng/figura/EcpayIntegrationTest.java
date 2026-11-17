@@ -138,7 +138,9 @@ class EcpayIntegrationTest {
         String no=tradeNo();var notice=sign(paid(s,no));var r=callback(notice,null);assertEquals(200,r.getResponse().getStatus());assertEquals("1|OK",body(r));
         assertEquals("PAID",status(o));assertEquals("SUCCEEDED",paymentStatus(s));assertEquals(3,physical(f));assertEquals(0,reserved(f));
         assertEquals(no,jdbc.queryForObject("SELECT gateway_trade_no FROM mock_payment WHERE id=?",String.class,s.path("payment").path("id").asText()));
-        assertEquals("1|OK",body(callback(notice,null)));assertEquals(1,consumes(o));assertEquals(3,physical(f));assertEquals(1,events(s));
+        var lower=paid(s,no.substring(0,16)+"ab");lower.put("MerchantTradeNo",lower.get("MerchantTradeNo").toLowerCase());assertEquals("1|OK",body(callback(sign(lower),null)));
+        var upper=paid(s,no.substring(0,16)+"AB");assertEquals("1|OK",body(callback(sign(upper),null)));assertEquals(2,events(s));
+        assertEquals("1|OK",body(callback(notice,null)));assertEquals(1,consumes(o));assertEquals(3,physical(f));assertEquals(2,events(s));
         var current=data(call(c,"GET","/customer/orders/"+o.path("id").asText(),null));assertEquals(409,call(c,"POST",startPath(o),start(current)).getResponse().getStatus());
     }
     @Test void forgedTamperedOrMismatchedNoticesChangeNothing() throws Exception{
@@ -161,7 +163,8 @@ class EcpayIntegrationTest {
         if(gateway.enabled()){String pid=s.path("payment").path("id").asText();var mock=new HashMap<String,Object>(Map.of("eventId",UUID.randomUUID().toString(),"paymentId",pid,"transactionId","mock_"+pid,"amountTwd",1280,"currency","TWD","outcome","SUCCESS"));String raw=json.writeValueAsString(mock),ts=Long.toString(java.time.Instant.now().getEpochSecond());
             assertEquals(409,mvc.perform(post("/figura/api/payments/mock/callback").contextPath("/figura").servletPath("/api/payments/mock/callback").header("X-Mock-Timestamp",ts).header("X-Mock-Signature",gateway.sign(ts,raw)).contentType("application/json").content(raw)).andReturn().getResponse().getStatus());
             assertEquals(0,events(s));}
-        assertEquals("1|OK",body(callback(good,null)));assertEquals("PAID",status(o));assertEquals(4,physical(f));
+        var lowered=paid(s,no);lowered.put("MerchantTradeNo",lowered.get("MerchantTradeNo").toLowerCase());assertEquals("1|OK",body(callback(sign(lowered),null)));assertEquals("PAID",status(o));assertEquals(4,physical(f));
+        assertEquals("1|OK",body(callback(good,null)));assertEquals(1,consumes(o));
     }
     @Test void restartSupersedesUnfinishedAttemptAndLateSuccessNeedsReview() throws Exception{
         var admin=admin();var f=fixture(admin,5);var c=customer();var o=place(c,ready(c,f,1));var first=ecpayStart(c,o,start(o));var second=ecpayStart(c,o,start(o));
