@@ -3,7 +3,7 @@ import lombok.Data;
 import java.time.LocalDateTime;
 @Data
 public class MockPayment {
- private String id,orderId,customerId,requestId,transactionId,currency,status;
+ private String id,orderId,customerId,requestId,transactionId,currency,status,provider,gatewayTradeNo;
  private int expectedOrderVersion;
  private long amountTwd;
  private LocalDateTime createdAt,settledAt;

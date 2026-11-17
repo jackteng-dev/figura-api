@@ -43,7 +43,7 @@ public class SecurityConfig {
                 // Cookie JWT 每次驗證；不使用 HttpSession，也不把每次請求當成新的 session 登入。
                 .sessionManagement(AbstractHttpConfigurer::disable)
                 .securityContext(context -> context.securityContextRepository(new NullSecurityContextRepository()))
-                .csrf(config -> config.csrfTokenRepository(csrf).csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler()).ignoringRequestMatchers(request -> "POST".equals(request.getMethod()) && ("/api/payments/mock/callback".equals(request.getServletPath()) || "/api/preorder-payments/mock/callback".equals(request.getServletPath()))))
+                .csrf(config -> config.csrfTokenRepository(csrf).csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler()).ignoringRequestMatchers(request -> "POST".equals(request.getMethod()) && ("/api/payments/mock/callback".equals(request.getServletPath()) || "/api/preorder-payments/mock/callback".equals(request.getServletPath()) || "/api/payments/ecpay/callback".equals(request.getServletPath()))))
                 .addFilterBefore(filter, UsernamePasswordAuthenticationFilter.class)
                 .exceptionHandling(config -> config.accessDeniedHandler((request, response, error) -> {
                     response.setStatus(403); response.setContentType("application/json"); response.setCharacterEncoding("UTF-8");
@@ -53,7 +53,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/admin/login", "/api/admin/logout", "/api/auth/refresh", "/api/auth/csrf",
                         "/api/customer/auth/register", "/api/customer/auth/login", "/api/customer/auth/refresh", "/api/customer/auth/logout",
                         "/api/customer/auth/email/verify", "/api/customer/auth/password/forgot", "/api/customer/auth/password/reset").permitAll()
-                        .requestMatchers(org.springframework.http.HttpMethod.POST,"/api/payments/mock/callback","/api/preorder-payments/mock/callback").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.POST,"/api/payments/mock/callback","/api/preorder-payments/mock/callback","/api/payments/ecpay/callback").permitAll()
                         .anyRequest().authenticated());
         return http.build();
     }

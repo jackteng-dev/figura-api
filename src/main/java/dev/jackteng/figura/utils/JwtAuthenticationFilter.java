@@ -35,7 +35,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if ("GET".equals(request.getMethod()) && (path.equals("/api/catalog/preorders") || matcher.match("/api/catalog/preorders/*",path) || path.equals("/api/catalog/products") || matcher.match("/api/catalog/products/*",path) || matcher.match("/api/catalog/products/*/image/*",path))) {
             chain.doFilter(request,response); return;
         }
-        if ("POST".equals(request.getMethod()) && (path.equals("/api/payments/mock/callback") || path.equals("/api/preorder-payments/mock/callback"))) { chain.doFilter(request,response); return; }
+        if ("POST".equals(request.getMethod()) && (path.equals("/api/payments/mock/callback") || path.equals("/api/preorder-payments/mock/callback") || path.equals("/api/payments/ecpay/callback"))) { chain.doFilter(request,response); return; }
         if (PUBLIC.contains(path)) { chain.doFilter(request, response); return; }
         if (path.equals("/api/user") || path.startsWith("/api/user/")) { error(response, 410, "舊會員 API 已停用"); return; }
         if (path.equals("/api/customer") || path.startsWith("/api/customer/")) {
@@ -86,6 +86,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     || (matcher.match("/api/customer/orders/*/cancel",path)&&method.equals("POST"))
                     || (matcher.match("/api/customer/orders/*/mock-payments",path)&&(method.equals("GET")||method.equals("POST")))
                     || (matcher.match("/api/customer/mock-payments/*/simulate",path)&&method.equals("POST"))
+                    || (matcher.match("/api/customer/orders/*/ecpay-payments",path)&&method.equals("POST"))
                     || (path.equals("/api/customer/addresses")&&method.equals("GET"))
                     || (matcher.match("/api/customer/addresses/*",path)&&(method.equals("PUT")||method.equals("DELETE")));
     }
