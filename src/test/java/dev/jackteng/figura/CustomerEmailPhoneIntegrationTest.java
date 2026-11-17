@@ -222,16 +222,20 @@ class CustomerEmailPhoneIntegrationTest {
         assertEquals(401, call(web, "POST", "/customer/auth/refresh", null).getResponse().getStatus());
     }
 
-    @Test void numericLegacyUsernameStillLogsInAndPhoneLikeLegacyNamesAreRejected() throws Exception {
-        String legacy = "9" + String.format("%07d", new Random().nextInt(10_000_000));
-        var r = call(guest(), "POST", "/customer/auth/register", Map.of("username", legacy, "password", PASSWORD, "displayName", "舊帳號"));
-        assertEquals(201, r.getResponse().getStatus()); ids.add(data(r).path("id").asText());
-        assertEquals(200, loginRaw(legacy, PASSWORD).getResponse().getStatus());
-        // 舊資料中可能存在的手機格式帳號：手機查不到時仍能以帳號名稱登入
+    @Test void usernameRegistrationAndLoginAreClosed() throws Exception {
+        // 舊格式（帳號名稱＋暱稱）註冊一律拒絕
+        assertEquals(400, call(guest(), "POST", "/customer/auth/register", Map.of("username", "legacy_" + UUID.randomUUID().toString().substring(0, 8), "password", PASSWORD, "displayName", "舊帳號")).getResponse().getStatus());
+        String email = email(), phone = phone();
+        String id = data(register(email, phone)).path("id").asText();
+        // 系統產生的內部帳號名稱不能拿來登入；只有 Email／手機可以
+        String internal = jdbc.queryForObject("SELECT username FROM customer WHERE id=?", String.class, id);
+        assertEquals(401, loginRaw(internal, PASSWORD).getResponse().getStatus());
+        // 舊資料若有手機格式的帳號名稱，也不會再被當成登入通道
         String phoneLike = phone();
-        jdbc.update("UPDATE customer SET username=? WHERE id=?", phoneLike, data(r).path("id").asText());
-        assertEquals(200, loginRaw(phoneLike, PASSWORD).getResponse().getStatus());
-        assertEquals(400, call(guest(), "POST", "/customer/auth/register", Map.of("username", phone(), "password", PASSWORD, "displayName", "手機帳號")).getResponse().getStatus());
+        jdbc.update("UPDATE customer SET username=? WHERE id=?", phoneLike, id);
+        assertEquals(401, loginRaw(phoneLike, PASSWORD).getResponse().getStatus());
+        assertEquals(200, loginRaw(email, PASSWORD).getResponse().getStatus());
+        assertEquals(200, loginRaw(phone, PASSWORD).getResponse().getStatus());
     }
 
     @Test void registrationRollsBackWhenVerificationMailCannotBeStored() throws Exception {
@@ -242,16 +246,6 @@ class CustomerEmailPhoneIntegrationTest {
         finally { org.mockito.Mockito.reset(jdbc); }
         assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM customer WHERE email=?", Integer.class, email.toLowerCase(Locale.ROOT)));
         assertEquals(201, register(email, phone).getResponse().getStatus());
-    }
-
-    @Test void phoneMatchingALegacyUsernameIsTaken() throws Exception {
-        String legacy = phone();
-        var r = call(guest(), "POST", "/customer/auth/register", Map.of("username", "legacy_" + UUID.randomUUID().toString().substring(0, 8), "password", PASSWORD, "displayName", "舊帳號"));
-        String id = data(r).path("id").asText(); ids.add(id);
-        jdbc.update("UPDATE customer SET username=? WHERE id=?", legacy, id);
-        var dup = register(email(), legacy);
-        assertEquals(409, dup.getResponse().getStatus()); assertEquals("此手機號碼已被註冊", body(dup).path("message").asText());
-        assertEquals(200, loginRaw(legacy, PASSWORD).getResponse().getStatus());
     }
 
     @Test void concurrentTokenUseHasOneWinnerAndPublicPostsNeedCsrf() throws Exception {

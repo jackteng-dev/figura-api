@@ -45,11 +45,11 @@ class MobileIdentityIntegrationTest {
         assertNull(r.getResponse().getHeader("Set-Cookie"));return data(r);
     }
     String register()throws Exception {
-        String name="mobile_"+UUID.randomUUID().toString().replace("-","").substring(0,20);
-        var r=call("POST","/mobile/customer/auth/register",null,Map.of("username",name,"password",PASSWORD,"displayName","App 測試會員"));
+        String name="mobile_"+UUID.randomUUID().toString().replace("-","").substring(0,20)+"@example.test";
+        var r=call("POST","/mobile/customer/auth/register",null,Map.of("email",name,"phone",TestPhones.next(),"password",PASSWORD));
         assertEquals(201,r.getResponse().getStatus());ids.add(data(r).path("id").asText());return name;
     }
-    @AfterEach void cleanup(){for(String id:ids){jdbc.update("DELETE FROM customer WHERE id=?",id);for(String realm:List.of("shop:customer:session:","shop:customer:mobile:session:")){var keys=redis.keys(realm+id+":*");if(keys!=null&&!keys.isEmpty())redis.delete(keys);}}}
+    @AfterEach void cleanup(){for(String id:ids){jdbc.update("DELETE FROM customer_email_token WHERE customer_id=?",id);jdbc.update("DELETE FROM customer_mock_email WHERE customer_id=?",id);jdbc.update("DELETE FROM customer WHERE id=?",id);for(String realm:List.of("shop:customer:session:","shop:customer:mobile:session:")){var keys=redis.keys(realm+id+":*");if(keys!=null&&!keys.isEmpty())redis.delete(keys);}}}
     @Test void cookieOnlyNeverAuthenticatesNativeAndNativeTokenDoesNotOpenWebsite()throws Exception {
         String name=register(),device=UUID.randomUUID().toString();var tokens=login(name,device);String access=tokens.path("accessToken").asText();
         assertEquals(200,call("GET","/mobile/customer/me",access,null).getResponse().getStatus());
@@ -65,10 +65,11 @@ class MobileIdentityIntegrationTest {
     @Test void ownerComesFromPrincipalAndProfileMassAssignmentRejected()throws Exception {
         String a=register(),b=register();var t=login(a,UUID.randomUUID().toString());String access=t.path("accessToken").asText();
         var other=login(b,UUID.randomUUID().toString());String id=other.path("customer").path("id").asText();
-        var r=call("PATCH","/mobile/customer/me",access,Map.of("displayName","新名稱","id",id));assertEquals(400,r.getResponse().getStatus());
-        assertEquals(200,call("PATCH","/mobile/customer/me",access,Map.of("displayName","新名稱")).getResponse().getStatus());
-        assertEquals("新名稱",data(call("GET","/mobile/customer/me",access,null)).path("displayName").asText());
-        assertEquals("App 測試會員",data(call("GET","/mobile/customer/me",other.path("accessToken").asText(),null)).path("displayName").asText());
+        // 暱稱已移除：PATCH 不再開放，資料不變
+        String before=data(call("GET","/mobile/customer/me",access,null)).path("displayName").asText();
+        assertNotEquals(200,call("PATCH","/mobile/customer/me",access,Map.of("displayName","新名稱","id",id)).getResponse().getStatus());
+        assertEquals(before,data(call("GET","/mobile/customer/me",access,null)).path("displayName").asText());
+        assertEquals(id,data(call("GET","/mobile/customer/me",other.path("accessToken").asText(),null)).path("id").asText());
     }
     @Test void refreshRaceOneWinnerOldAccessAndRefreshStayRevoked()throws Exception {
         String name=register();var t=login(name,UUID.randomUUID().toString());var pool=Executors.newFixedThreadPool(4);var start=new CountDownLatch(1);

@@ -31,20 +31,13 @@ public class CustomerSessionService {
     public Customer register(CustomerPayloads.Registration input) {
         var customer=new Customer();customer.setId(UUID.randomUUID().toString());
         customer.setPasswordHash(passwords.encode(input.password()));
-        if (input.contactStyle()) {
-            // V19 新版：手機＋信箱＋密碼。內部自動產生 username（不對外使用），暱稱預設「會員＋手機末四碼」，可在會員中心修改。
-            String email=CustomerPayloads.normalizeEmail(input.email()), phone=CustomerPayloads.normalizePhone(input.phone());
-            if (customers.byEmail(email)!=null) throw new ResponseStatusException(HttpStatus.CONFLICT,"此 Email 已被註冊");
-            // 舊帳號允許純數字名稱：手機號碼若等於既有帳號名稱，同樣視為已被使用，避免舊會員失去登入通道
-            if (customers.byPhone(phone)!=null || customers.byUsername(phone)!=null) throw new ResponseStatusException(HttpStatus.CONFLICT,"此手機號碼已被註冊");
-            customer.setEmail(email);customer.setPhone(phone);
-            customer.setUsername("m_"+UUID.randomUUID().toString().replace("-","").substring(0,24));
-            customer.setDisplayName("會員"+phone.substring(phone.length()-4));
-        } else {
-            // 舊版（App）帳號名稱不可是手機格式，避免與手機登入互相混淆
-            if (CustomerPayloads.normalizePhone(input.username())!=null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"帳號不可使用手機號碼格式");
-            customer.setUsername(normalize(input.username()));customer.setDisplayName(input.displayName().strip());
-        }
+        // 手機＋Email＋密碼。username／display_name 欄位仍為資料庫必填，由系統產生、不對外使用。
+        String email=CustomerPayloads.normalizeEmail(input.email()), phone=CustomerPayloads.normalizePhone(input.phone());
+        if (customers.byEmail(email)!=null) throw new ResponseStatusException(HttpStatus.CONFLICT,"此 Email 已被註冊");
+        if (customers.byPhone(phone)!=null) throw new ResponseStatusException(HttpStatus.CONFLICT,"此手機號碼已被註冊");
+        customer.setEmail(email);customer.setPhone(phone);
+        customer.setUsername("m_"+UUID.randomUUID().toString().replace("-","").substring(0,24));
+        customer.setDisplayName("會員"+phone.substring(phone.length()-4));
         try { customers.insert(customer); }
         catch (DuplicateKeyException e) {
             // 同時註冊的競爭：以違反的唯一鍵判斷訊息
@@ -55,14 +48,12 @@ public class CustomerSessionService {
         }
         return customers.byId(customer.getId());
     }
-    /** 依登入識別找顧客：含 @ 視為 Email，符合台灣手機視為手機，否則為舊帳號名稱。 */
+    /** 依登入識別找顧客：只接受 Email 或台灣手機；帳號名稱登入已停用。 */
     private Customer byLoginIdentifier(String raw) {
         String value=raw.strip();
         if (value.contains("@")) { String email=CustomerPayloads.normalizeEmail(value); return email==null?null:customers.byEmail(email); }
         String phone=CustomerPayloads.normalizePhone(value);
-        if (phone!=null) { var byPhone=customers.byPhone(phone); if (byPhone!=null) return byPhone; }
-        // 手機查不到時退回舊帳號名稱（舊規則允許純數字帳號，例如 0912345678）
-        return CustomerPayloads.USERNAME.matcher(value).matches()?customers.byUsername(normalize(value)):null;
+        return phone==null?null:customers.byPhone(phone);
     }
     /**
      * 登入與重設密碼競爭：登入先讀到舊密碼雜湊並驗證通過，若在 revokeAll() 之後才寫入 session，舊密碼會留下有效登入。
@@ -128,10 +119,6 @@ public class CustomerSessionService {
                 JwtUtil.ACCESS_LIFETIME.toSeconds(),CustomerPayloads.View.from(customer));
     }
     public CustomerPayloads.View ownProfile(String authenticatedId) { return CustomerPayloads.View.from(activeCustomer(authenticatedId)); }
-    public CustomerPayloads.View updateOwnProfile(String authenticatedId,CustomerPayloads.Profile profile) {
-        if(customers.updateOwnDisplayName(authenticatedId,profile.displayName().strip())!=1) throw unauthorized();
-        return ownProfile(authenticatedId);
-    }
     public void refresh(String token,HttpServletResponse response) {
         var old=verified(token,"refresh");var customer=activeCustomer((String)old.get("id"));
         var next=claims(customer,(String)old.get("deviceId"),UUID.randomUUID().toString(),Boolean.TRUE.equals(old.get("rememberMe")));

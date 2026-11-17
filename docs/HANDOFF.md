@@ -1,5 +1,15 @@
 # Figura（原 ELPSY Shop） 後端交接
 
+## 2026-11-17：關閉帳號名稱登入與暱稱（只剩手機＋Email）
+
+分支 `feat/contact-only-login`（無 schema 變更、未改 `src/main/resources/`）。作者要求：開發階段，舊帳號與相關訂單可刪。
+
+- 註冊只接受 `phone`＋`email`＋`password`；送 `username`／`displayName` 回 400（舊格式與 Flutter App 舊註冊格式都停用）。
+- 登入識別只認 Email 或台灣手機；系統產生的內部 `username`（`m_…`）與舊帳號名稱都不能登入。
+- 移除暱稱修改：`PATCH /customer/me`、`/mobile/customer/me` 與 `Profile` DTO、`updateOwnDisplayName`。`username`／`display_name` 欄位仍是資料庫必填，由系統產生、不對外使用；`View` 仍回傳兩欄（App 相容）。
+- 測試全面改為手機＋Email 註冊（`TestPhones`），身分測試改成驗證「舊格式被拒、帳號名稱不能登入」。完整測試僅剩既有 8 個失敗。
+- **舊帳號刪除**：本機 demo DB 已刪 3 個舊帳號（無訂單）。正式環境需由伺服器端在部署之間執行 `work/cleanup-legacy-customers.sql`（不進 Git；先備份；單一交易；會釋放待付款保留庫存與預購配額，再由子表到父表刪除；最後檢查查詢須全 0）。已在隔離測試 DB 以 ROLLBACK 演練 273 個舊帳號／215 訂單／67 預購，約束與庫存／配額計數全部一致。執行後另刪 Redis `shop:customer:session:<id>:*`、`shop:customer:mobile:session:<id>:*`。
+
 ## 2026-11-17：綠界（ECPay）測試環境信用卡付款（V20，含 schema 變更）
 
 分支 `feat/ecpay`（基於 `feat/customer-email-phone`，需與前端 `feat/ecpay` 一起上線）。**只接綠界測試環境，不會實際收款**；現貨訂單限定，預購仍只有付款模擬。

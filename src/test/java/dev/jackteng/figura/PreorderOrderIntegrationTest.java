@@ -43,8 +43,8 @@ class PreorderOrderIntegrationTest {
     private Client guest() throws Exception{var r=call(null,"GET","/auth/csrf",null);return new Client(data(r).path("token").asText(),List.of(cookie(r,"XSRF-TOKEN")),"");}
     private Client customer() throws Exception{
         var c=guest();String name="cart_"+UUID.randomUUID().toString().replace("-","").substring(0,20),password="test-cart-password-2026",device=UUID.randomUUID().toString();
-        var r=call(c,"POST","/customer/auth/register",Map.of("username",name,"password",password,"displayName","合成顧客"));assertEquals(201,r.getResponse().getStatus());String id=data(r).path("id").asText();customers.add(id);
-        r=call(c,"POST","/customer/auth/login",Map.of("username",name,"password",password,"deviceId",device,"rememberMe",false));assertEquals(200,r.getResponse().getStatus());sessions.add("shop:customer:session:"+id+":"+device);
+        var r=call(c,"POST","/customer/auth/register",Map.of("email",name+"@example.test","phone",TestPhones.next(),"password",password));assertEquals(201,r.getResponse().getStatus());String id=data(r).path("id").asText();customers.add(id);
+        r=call(c,"POST","/customer/auth/login",Map.of("username",name+"@example.test","password",password,"deviceId",device,"rememberMe",false));assertEquals(200,r.getResponse().getStatus());sessions.add("shop:customer:session:"+id+":"+device);
         return new Client(c.csrf(),List.of(c.cookies().get(0),cookie(r,"customerAccessToken"),cookie(r,"customerRefreshToken")),id);
     }
     private Client admin() throws Exception{

@@ -71,7 +71,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
     public static boolean customerRouteAllowed(String path,String method) {
         var matcher=new AntPathMatcher();
-        return (path.equals("/api/customer/me")&&(method.equals("GET")||method.equals("PATCH")))
+        return (path.equals("/api/customer/me")&&method.equals("GET"))
                     || (path.equals("/api/customer/email/verification")&&method.equals("POST"))
                     || (path.equals("/api/customer/cart")&&method.equals("GET"))
                     || (matcher.match("/api/customer/cart/items/*",path)&&(method.equals("PUT")||method.equals("DELETE")))
