@@ -30,7 +30,8 @@ public class OrderService {
   if(shopping.lockCustomer(customer)==null)throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"顧客登入狀態無效");
   var prior=orders.request(customer,input.requestId());
   if(prior!=null){
-   if(prior.getCartVersion()!=input.cartVersion()||!prior.getAddressId().equals(input.addressId())||prior.getAddressVersion()!=input.addressVersion()||prior.getSubtotalTwd()!=input.expectedSubtotalTwd())throw conflict("操作編號已用於不同內容，請核對訂單");
+   // 直接購買的操作編號不能從購物車入口重送（即使 cartVersion 也送 0）
+   if(prior.getCartVersion()==DIRECT||prior.getCartVersion()!=input.cartVersion()||!prior.getAddressId().equals(input.addressId())||prior.getAddressVersion()!=input.addressVersion()||prior.getSubtotalTwd()!=input.expectedSubtotalTwd())throw conflict("操作編號已用於不同內容，請核對訂單");
    // Return current state; a cancelled/expired replay never creates a new reservation.
    expireLocked(prior);return new Applied(view(require(orders.find(customer,prior.getId()))),true);
   }

@@ -108,7 +108,8 @@ class DirectOrderIntegrationTest {
         var replay=buy(c,body);assertEquals(200,replay.getResponse().getStatus());assertTrue(data(replay).path("replayed").asBoolean());assertEquals(order.path("id").asText(),data(replay).path("order").path("id").asText());assertEquals(2,reserved(f));
         var changed=new HashMap<>(body);changed.put("quantity",1);changed.put("expectedSubtotalTwd",1280);assertEquals(409,buy(c,changed).getResponse().getStatus());
         var cartPlace=new HashMap<String,Object>(Map.of("requestId",body.get("requestId"),"cartVersion",after.path("version").asInt(),"addressId",address,"addressVersion",1,"expectedSubtotalTwd",after.path("subtotalTwd").asLong()));
-        assertEquals(409,call(c,"POST","/customer/orders",cartPlace).getResponse().getStatus());assertEquals(2,reserved(f));assertEquals(0,reserved(other));
+        assertEquals(409,call(c,"POST","/customer/orders",cartPlace).getResponse().getStatus());
+        var zero=new HashMap<String,Object>(Map.of("requestId",body.get("requestId"),"cartVersion",0,"addressId",address,"addressVersion",1,"expectedSubtotalTwd",2560L));assertEquals(409,call(c,"POST","/customer/orders",zero).getResponse().getStatus());assertEquals(2,reserved(f));assertEquals(0,reserved(other));
         // 已有的購物車訂單操作編號也不能拿來直接購買
         var placed=place(c,new HashMap<>(Map.of("requestId",UUID.randomUUID().toString(),"cartVersion",after.path("version").asInt(),"addressId",address,"addressVersion",1,"expectedSubtotalTwd",after.path("subtotalTwd").asLong())));
         var reuse=direct(f,1,address,1280);reuse.put("requestId",jdbc.queryForObject("SELECT request_id FROM customer_order WHERE id=?",String.class,placed.path("id").asText()));assertEquals(409,buy(c,reuse).getResponse().getStatus());
