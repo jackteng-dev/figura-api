@@ -39,8 +39,8 @@ public class CustomerEmailService {
 
     public CustomerEmailService(JdbcTemplate db, CustomerMapper customers, BCryptPasswordEncoder passwords, StringRedisTemplate redis,
                                 CustomerSessionService sessions, @Value("${MOCK_EMAIL_ENABLED:false}") boolean mockEnabled,
-                                @Value("${DEMO_CUSTOMER_PASSWORD:}") String demoCustomerPassword) {
-        this.protectDemoCustomer = !demoCustomerPassword.isBlank();
+                                @Value("${DEMO_CUSTOMER_PASSWORD:}") String demoCustomerPassword, org.springframework.core.env.Environment env) {
+        this.protectDemoCustomer = dev.jackteng.figura.config.DemoCustomerSeeder.protects(env, demoCustomerPassword);
         this.db = db; this.customers = customers; this.passwords = passwords; this.redis = redis; this.sessions = sessions; this.mockEnabled = mockEnabled;
     }
 
@@ -74,7 +74,7 @@ public class CustomerEmailService {
         return CustomerPayloads.View.from(customers.byId(customer.getId()));
     }
 
-    /** 沙盒（有設定示範會員密碼）時，公開示範會員不能被訪客重設密碼，避免公開帳密失效。 */
+    /** 沙盒（demo profile 且有設定示範會員密碼）時，公開示範會員不能被訪客重設密碼，避免公開帳密失效。 */
     private final boolean protectDemoCustomer;
     private boolean isProtectedDemo(String email) { return protectDemoCustomer && dev.jackteng.figura.config.DemoCustomerSeeder.EMAIL.equals(email); }
 
