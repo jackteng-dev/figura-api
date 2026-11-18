@@ -25,6 +25,8 @@ public final class PreorderOrderPayloads {
   String arrivalStatus,String fulfillmentStatus,boolean paymentReviewRequired,PreorderMoneyPayloads.RefundProgress refund,PreorderFulfillmentPayloads.Progress fulfillment,
   // Phase 4：FULL 或 DEPOSIT；DEPOSIT 的 status=PAID 代表訂金已付、名額已確保，尾款另看 balanceStatus（NOT_DUE／DUE／PAID）
   String paymentMode,long depositTwd,long balanceTwd,String balanceStatus,OffsetDateTime balanceDueAt,OffsetDateTime balancePaidAt,
-  long payNowTwd,java.util.List<PreorderPayloads.ScheduleNotice> schedule) {}
+  long payNowTwd,java.util.List<PreorderPayloads.ScheduleNotice> schedule,
+  // Phase 5：所屬出貨單（舊訂單沒有，為 null）
+  ShippingPayloads.Shipment shipment) {}
  public record Applied(View order,boolean replayed) {}
 }
