@@ -16,6 +16,8 @@
 - 登入識別只認 Email 或台灣手機；系統產生的內部 `username`（`m_…`）與舊帳號名稱都不能登入。
 - 移除暱稱修改：`PATCH /customer/me`、`/mobile/customer/me` 與 `Profile` DTO、`updateOwnDisplayName`。`username`／`display_name` 欄位仍是資料庫必填，由系統產生、不對外使用；`View` 仍回傳兩欄（App 相容）。
 - 測試全面改為手機＋Email 註冊（`TestPhones`），身分測試改成驗證「舊格式被拒、帳號名稱不能登入」。完整測試僅剩既有 8 個失敗。
+- **HTTP smoke 腳本（2026-11-18 補）**：`scripts/smoke_*.py` 共 13 支原本仍用帳號名稱＋暱稱註冊、帳號名稱登入，在本分支會全部失敗（CI 只跑 Maven 測試，沒有跑這些腳本，所以 CI 綠燈沒有發現）。已改成手機＋Email 註冊、Email 登入；`smoke_customer.py` 改驗「舊格式註冊 400、帳號名稱登入 401、修改暱稱 403、本人資料含 Email／手機」；`smoke_mobile.py` 產生的 App fixture `APP_TEST_USERNAME` 改為 Email。本機隔離 demo（feat/buy-now 建置）實跑：customer 22、mobile 19、shopping 28、orders 24、payments 23、preorders 30 項通過；`smoke_preorder_orders` 在「MOCK 通知派送」失敗，因本機 demo 設定未開 `MOCK_NOTIFICATIONS_ENABLED`（與既有 NotificationIntegrationTest 失敗同源），註冊／登入步驟已通過。
+- **Flutter App 相容**：App 需同時更新（figura-app `feat/contact-only-login`）：註冊改手機＋Email、登入接受 Email、移除修改暱稱。舊版 App 在本分支上線後：登入用手機可以（舊版欄位驗證擋 Email）、註冊與修改暱稱會失敗。
 - **舊帳號刪除**：本機 demo DB 已刪 3 個舊帳號（無訂單）。正式環境需由伺服器端在部署之間執行 `work/cleanup-legacy-customers.sql`（不進 Git；先備份；單一交易；會釋放待付款保留庫存與預購配額，再由子表到父表刪除；最後檢查查詢須全 0）。已在隔離測試 DB 以 ROLLBACK 演練 273 個舊帳號／215 訂單／67 預購，約束與庫存／配額計數全部一致。執行後另刪 Redis `shop:customer:session:<id>:*`、`shop:customer:mobile:session:<id>:*`。
 
 ## 2026-11-17：綠界（ECPay）測試環境信用卡付款（V20，含 schema 變更）

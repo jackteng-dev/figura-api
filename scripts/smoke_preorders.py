@@ -71,7 +71,7 @@ try:
     r=admin.req(path(b)+'/open','POST',cmd);check('原開放重送回目前截單狀態',r[0]==200 and r[1]['data']['current']['status']=='CLOSED')
     d=staff.req(path(b))[1]['data'];check('稽核唯讀且無fingerprint',len(d['events'])==3 and all('fingerprint' not in e for e in d['events']) and admin.req(path(b),'DELETE')[0]==403)
     check('整個批次流程不改現貨庫存',admin.req(inv)[1]['data']==stock)
-    g=Client();password=secrets.token_urlsafe(24);username='pre_'+uuid.uuid4().hex[:20];assert g.req('/customer/auth/register','POST',dict(username=username,password=password,displayName='合成預購會員'))[0]==201;assert g.req('/customer/auth/login','POST',dict(username=username,password=password,deviceId=str(uuid.uuid4()),rememberMe=False))[0]==200
+    g=Client();password=secrets.token_urlsafe(24);username='pre_'+uuid.uuid4().hex[:20];assert g.req('/customer/auth/register','POST',dict(email=username+'@example.test',phone='09%08d'%(uuid.uuid4().int%10**8),password=password))[0]==201;assert g.req('/customer/auth/login','POST',dict(username=username+'@example.test',password=password,deviceId=str(uuid.uuid4()),rememberMe=False))[0]==200
     check('顧客不能使用員工 API',g.req('/admin/preorders')[0]==401 and g.req('/admin/preorders','POST',write(p))[0]==401)
     private,_=create(p);private=admin.req(path(private)+'/close','POST',command(private))[1]['data']['current'];check('取消草稿不變公開批次',anon.req(public(private))[0]==404)
     exp,_=create(p,4);r=admin.req(path(exp)+'/open','POST',command(exp));assert r[0]==201
