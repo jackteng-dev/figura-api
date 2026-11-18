@@ -16,7 +16,8 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** Phase 4：批次訂金／尾款、到貨後尾款通知、延期紀錄與通知、退款保留原付款紀錄。全部為模擬金流。 */
-@SpringBootTest(properties = {"shop.orders.expiry-delay-ms=600000", "MOCK_PAYMENTS_ENABLED=true", "MOCK_REFUNDS_ENABLED=true", "MOCK_FULFILLMENT_ENABLED=true"})
+// 模擬金流／退款／履約由環境變數開啟（CI 與本機 demo.env 皆為 true）；與 PreorderMoney 等測試共用同一個 context，避免連線數超過 MySQL 上限
+@SpringBootTest(properties="shop.orders.expiry-delay-ms=600000")
 @AutoConfigureMockMvc(print = MockMvcPrint.NONE) @ActiveProfiles("demo")
 @EnabledIfEnvironmentVariable(named = "SHOP_MYSQL_INTEGRATION", matches = "true")
 class PreorderDepositIntegrationTest extends ShopIntegrationSupport {
