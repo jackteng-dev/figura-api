@@ -55,14 +55,16 @@ public class CheckoutService {
             var lines = cart.items().stream().map(i -> new QuoteLine(i.productId(), i.skuId(), null, i.title(), i.label(), i.quantity(),
                     i.unitPriceTwd() == null ? 0 : i.unitPriceTwd(), i.lineTotalTwd() == null ? 0 : i.lineTotalTwd(), i.issue())).toList();
             groups.add(new QuoteGroup("STOCK", "STOCK", "現貨", null, null, null, null, null, lines, cart.subtotalTwd(), 0, cart.subtotalTwd(),
-                    cart.subtotalTwd(), 0, cart.ready()));
+                    cart.subtotalTwd(), 0, cart.ready(), "FULL"));
         }
         for (var p : cart.preorders()) {
             var line = new QuoteLine(p.productId(), p.skuId(), p.batchId(), p.title(), p.label(), p.quantity(), p.unitPriceTwd(), p.lineTotalTwd(), p.issue());
             String month = p.arrivalFrom() == null ? null : p.arrivalFrom().toString().substring(0, 7);
             long total = p.issue() == null ? p.lineTotalTwd() : 0;
+            // 付款條件依批次：訂金批次現在只付訂金，尾款到貨通知後再付
+            long now = "DEPOSIT".equals(p.paymentMode()) && p.depositTwd() != null ? Math.min(total, (long) p.depositTwd() * p.quantity()) : total;
             groups.add(new QuoteGroup("PREORDER:" + p.batchId(), "PREORDER", p.batchName(), p.batchId(), p.arrivalFrom(), p.arrivalTo(), month, p.deadlineAt(),
-                    List.of(line), total, 0, total, total, 0, p.issue() == null));
+                    List.of(line), total, 0, total, now, total - now, p.issue() == null, p.paymentMode()));
         }
         long subtotal = groups.stream().mapToLong(QuoteGroup::subtotalTwd).sum();
         long payNow = groups.stream().mapToLong(QuoteGroup::payNowTwd).sum(), payLater = groups.stream().mapToLong(QuoteGroup::payLaterTwd).sum();

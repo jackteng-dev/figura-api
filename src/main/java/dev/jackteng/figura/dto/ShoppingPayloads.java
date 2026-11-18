@@ -15,7 +15,7 @@ public final class ShoppingPayloads {
     /** 購物車預購項目（以批次為鍵，同 SKU 不同批次分開）。issue：UNAVAILABLE／CLOSED／EXPIRED／INSUFFICIENT_QUOTA。 */
     public record PreorderLine(String batchId,String productId,String skuId,String title,String batchName,String label,int quantity,
                                int unitPriceTwd,long lineTotalTwd,java.time.OffsetDateTime deadlineAt,java.time.LocalDate arrivalFrom,
-                               java.time.LocalDate arrivalTo,int availableQuota,String issue) {}
+                               java.time.LocalDate arrivalTo,int availableQuota,String issue,String paymentMode,Integer depositTwd) {}
     /**
      * items／subtotalTwd／ready 只計現貨（與舊版網站、App 相容，舊的 POST /customer/orders 仍只結帳現貨）。
      * preorders、preorderSubtotalTwd、totalTwd、checkoutReady 是統一結帳用的新欄位。

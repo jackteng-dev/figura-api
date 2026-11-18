@@ -20,7 +20,7 @@ public final class CheckoutPayloads {
      */
     public record QuoteGroup(String key, String kind, String title, String batchId, LocalDate arrivalFrom, LocalDate arrivalTo, String arrivalMonth,
                              OffsetDateTime deadlineAt, List<QuoteLine> lines, long subtotalTwd, int shippingTwd, long totalTwd,
-                             long payNowTwd, long payLaterTwd, boolean ready) {}
+                             long payNowTwd, long payLaterTwd, boolean ready, String paymentMode) {}
     /** 結帳預覽：不保留庫存或配額。cartVersion 與 totalTwd 送出時要原樣帶回核對。 */
     public record Quote(int cartVersion, List<QuoteGroup> groups, long subtotalTwd, int shippingTwd, long totalTwd, long payNowTwd, long payLaterTwd, boolean ready) {}
 

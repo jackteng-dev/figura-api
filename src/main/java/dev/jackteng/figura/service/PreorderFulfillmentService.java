@@ -35,7 +35,7 @@ public class PreorderFulfillmentService {
  @Transactional(readOnly=true) public Page<Supply> list(int page,int size){if(page<1||page>100000||size<1||size>50)throw fail(400,"分頁參數不正確");return new Page<>(db.query("SELECT * FROM preorder_batch ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",supplies,size,(page-1)*size),page,size,db.queryForObject("SELECT COUNT(*) FROM preorder_batch",Long.class));}
  @Transactional(readOnly=true) public BatchDetail batchDetail(String id){return new BatchDetail(supply(id,false),db.query("SELECT * FROM preorder_fulfillment_event WHERE batch_id=? ORDER BY created_at,request_id",events,id));}
  private boolean paid(View o){return o.status().equals("PAID")&&!o.paymentReviewRequired();}
- private boolean allocatable(View o,Supply s){return paid(o)&&o.arrivalStatus().equals("NOT_ARRIVED")&&o.fulfillmentStatus().equals("UNFULFILLED")&&o.fulfillment().allocatedQuantity()==0&&s.unallocatedQuantity()>=o.quantity();}
+ private boolean allocatable(View o,Supply s){return paid(o)&&(o.paymentMode().equals("FULL")||o.balanceStatus().equals("PAID"))&&o.arrivalStatus().equals("NOT_ARRIVED")&&o.fulfillmentStatus().equals("UNFULFILLED")&&o.fulfillment().allocatedQuantity()==0&&s.unallocatedQuantity()>=o.quantity();}
  private boolean shippable(View o){return mockEnabled&&paid(o)&&o.arrivalStatus().equals("ARRIVED")&&o.fulfillment().allocatedQuantity()==o.quantity()&&o.fulfillmentStatus().equals("UNFULFILLED");}
  private boolean deliverable(View o){return mockEnabled&&paid(o)&&o.fulfillmentStatus().equals("SHIPPED");}
  @Transactional(readOnly=true) public Detail detail(String id){var o=orders.staffDetail(id);return new Detail(supply(o.batchId(),false),mockEnabled,allocatable(o,supply(o.batchId(),false)),shippable(o),deliverable(o),db.query("SELECT * FROM preorder_fulfillment_event WHERE order_id=? ORDER BY created_at,request_id",events,id));}
@@ -64,7 +64,7 @@ public class PreorderFulfillmentService {
   String fingerprint=hash(Arrays.asList(action,id,expected,expectedBatch,note));var retry=replay(request,o.batchId(),id,action,fingerprint,actor);if(retry!=null)return new Applied(retry,o,detail(id),true);
   if(o.version()!=expected||(expectedBatch!=null&&before.version()!=expectedBatch))throw fail(409,"預購訂單或到貨批次版本已變更，請先重讀");
   if(action.equals("ALLOCATE")){
-   if(!allocatable(o,before))throw fail(409,"只可整筆分配給已付款、未分配且無待核對訂單，實際到貨數量須足夠");
+   if(!allocatable(o,before))throw fail(409,"只可整筆分配給已付清（訂金訂單需尾款已付）、未分配且無待核對訂單，實際到貨數量須足夠");
    db.update("UPDATE preorder_batch SET allocated_quantity=allocated_quantity+?,version=version+1,updated_at=CURRENT_TIMESTAMP(6) WHERE id=?",o.quantity(),o.batchId());
    db.update("UPDATE preorder_order SET allocated_quantity=quantity,allocated_at=CURRENT_TIMESTAMP(6),arrival_status='ARRIVED',version=version+1 WHERE id=?",id);
   }else if(action.equals("SHIP")){

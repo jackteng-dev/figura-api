@@ -43,7 +43,7 @@ public class ShoppingService {
     /** 預購項目：價格、名稱、到貨時間、剩餘配額都即時取自批次；購物車不保留配額。 */
     private List<PreorderLine> preorderLines(String customer){
         return db.query("""
-            SELECT c.batch_id, c.quantity, b.product_id, b.sku_id, b.name, b.product_title, b.sku_label, b.price_twd, b.deadline_at, b.arrival_from, b.arrival_to,
+            SELECT c.batch_id, c.quantity, b.product_id, b.sku_id, b.name, b.product_title, b.sku_label, b.price_twd, b.deadline_at, b.arrival_from, b.arrival_to, b.payment_mode, b.deposit_twd,
                    b.status, b.capacity - b.held_quantity - b.paid_quantity available, b.deadline_at <= CURRENT_TIMESTAMP(6) expired,
                    (p.status='PUBLISHED' AND s.enabled) sellable
               FROM customer_cart_preorder c JOIN preorder_batch b ON b.id=c.batch_id
@@ -53,7 +53,8 @@ public class ShoppingService {
             String issue=!r.getBoolean("sellable")?"UNAVAILABLE":!"OPEN".equals(r.getString("status"))?"CLOSED":r.getBoolean("expired")?"EXPIRED":qty>available?"INSUFFICIENT_QUOTA":null;
             var deadline=r.getObject("deadline_at",java.time.LocalDateTime.class);
             return new PreorderLine(r.getString("batch_id"),r.getString("product_id"),r.getString("sku_id"),r.getString("product_title"),r.getString("name"),r.getString("sku_label"),
-                    qty,price,(long)price*qty,deadline==null?null:deadline.atOffset(TAIPEI),r.getObject("arrival_from",java.time.LocalDate.class),r.getObject("arrival_to",java.time.LocalDate.class),available,issue);
+                    qty,price,(long)price*qty,deadline==null?null:deadline.atOffset(TAIPEI),r.getObject("arrival_from",java.time.LocalDate.class),r.getObject("arrival_to",java.time.LocalDate.class),available,issue,
+                    r.getString("payment_mode"),(Integer)r.getObject("deposit_twd"));
         },customer);
     }
     private int lineCount(String customer){

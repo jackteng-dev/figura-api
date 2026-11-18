@@ -20,7 +20,9 @@ public final class OrderCenterPayloads {
     public record Item(String kind, String id, String stage, String status, OffsetDateTime createdAt, long totalTwd,
                        String title, int lineCount, int quantity, String productId, OffsetDateTime expiresAt,
                        LocalDate arrivalFrom, LocalDate arrivalTo, String arrivalStatus, String fulfillmentStatus,
-                       boolean paymentReviewRequired) {}
+                       boolean paymentReviewRequired,
+                       // 預購訂金：DUE 表示已付訂金、待付尾款（此時 stage 為 PENDING_PAYMENT）；現貨為 null
+                       String balanceStatus, OffsetDateTime balanceDueAt) {}
     /** total／分頁依目前 kind＋stage 篩選後全域計算；counts 是目前 kind 下各階段的筆數（給分頁籤顯示）。 */
     public record Page(List<Item> items, int page, int pageSize, long total, Map<String, Long> counts) {}
 }
