@@ -49,7 +49,13 @@ public class DemoAccountInitializer implements ApplicationRunner {
         if (customerPassword.length() < 12 || customerPassword.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 72)
             throw new IllegalStateException("示範會員密碼需至少 12 字元、不超過 72 bytes");
         Integer byEmail = jdbc.queryForObject("SELECT COUNT(*) FROM customer WHERE email=?", Integer.class, DEMO_CUSTOMER_EMAIL);
-        if (byEmail != 0) return;
+        if (byEmail != 0) {
+            // 已存在：只核對，不修改資料、不重設密碼。不符合新版示範會員條件就停止啟動，請人工處理。
+            Integer ok = jdbc.queryForObject("SELECT COUNT(*) FROM customer WHERE email=? AND phone=? AND enabled=1 AND email_verified_at IS NOT NULL",
+                    Integer.class, DEMO_CUSTOMER_EMAIL, DEMO_CUSTOMER_PHONE);
+            if (ok != 1) throw new IllegalStateException("既有示範會員資料不符合新版規則（手機、啟用或 Email 驗證），請先人工核對");
+            return;
+        }
         Integer byPhone = jdbc.queryForObject("SELECT COUNT(*) FROM customer WHERE phone=?", Integer.class, DEMO_CUSTOMER_PHONE);
         if (byPhone != 0) throw new IllegalStateException("示範會員手機已被其他帳號使用，請先核對資料");
         String id = java.util.UUID.randomUUID().toString();

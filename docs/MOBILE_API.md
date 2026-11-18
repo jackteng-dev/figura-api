@@ -25,7 +25,7 @@ access 15 分鐘、refresh 7 天；refresh 輪替用 Redis 原子 compare-and-se
 
 ## App 寫入
 
-以 secure storage 保存原 owner／UUID／完整 body；未知5xx／斷線凍結新寫入，同 ID/body 才能明確重试冪等操作。cart/address/profile/現貨取消沒有 UUID，不能盲重送，先 GET 目前資料供使用者核對。ACK即移除 pending，後續讀取失敗只能讀取。refresh只可針對後端先拒絕的401單次更新，沒有一般network自動重試。
+以 secure storage 保存原 owner／UUID／完整 body；未知5xx／斷線凍結新寫入，同 ID/body 才能明確重试冪等操作。cart/address/現貨取消沒有 UUID，不能盲重送，先 GET 目前資料供使用者核對。ACK即移除 pending，後續讀取失敗只能讀取。refresh只可針對後端先拒絕的401單次更新，沒有一般network自動重試。
 
 ## 證據
 
