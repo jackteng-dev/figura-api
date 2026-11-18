@@ -52,8 +52,10 @@ public class ShipmentService {
         return rows.get(0);
     }
     private Detail detail(Map<String, Object> s) {
-        var v = reader.view(s);
-        return new Detail(v, mockEnabled, mockEnabled && v.status().equals("READY"), mockEnabled && v.status().equals("SHIPPED"),
+        var v = reader.view(s); var members = reader.members(v.id());
+        boolean clean = members.stream().filter(m -> !m.closed()).noneMatch(ShipmentReader.Member::flagged);
+        boolean ship = v.status().equals("READY") || ("FEE".equals(v.waitingFor()) && ShipmentReader.allReady(members));
+        return new Detail(v, mockEnabled, mockEnabled && ship, mockEnabled && clean && v.status().equals("SHIPPED"),
                 db.query("SELECT * FROM shipment_event WHERE shipment_id=? ORDER BY created_at,request_id", events, v.id()));
     }
     @Transactional(readOnly = true) public Detail detail(String id) { return detail(row(id, false)); }
@@ -70,6 +72,8 @@ public class ShipmentService {
         String username = actor == null ? null : staff.lockActor(actor.getId());
         if (username == null || staff.lockPermission(actor.getId(), action.equals("SHIP") ? "shipments.ship.mock" : "shipments.deliver.mock").isEmpty()) throw fail(403, "員工或出貨授權已失效");
         String note = in.note().trim(); if (note.isBlank()) throw fail(400, "出貨原因不可空白");
+        boolean waive = action.equals("SHIP") && Boolean.TRUE.equals(in.waiveUnpaidFee());
+        if (waive) note = "【免收未付運費】" + note;
         var known = row(id, false);
         String customer = (String) known.get("customer_id");
         db.queryForList("SELECT id FROM customer WHERE id=? FOR UPDATE", String.class, customer);
@@ -97,16 +101,21 @@ public class ShipmentService {
         String status = ShipmentReader.status(members)[0];
         String tracking;
         if (action.equals("SHIP")) {
-            if (!status.equals("READY")) throw fail(409, "出貨單還有訂單未付款、未付尾款、未到貨或待核對，不能出貨");
+            boolean feeOnly = ShipmentReader.unpaidFee(members) && ShipmentReader.allReady(members);
+            if (feeOnly && !waive) throw fail(409, "承擔運費的訂單已取消或退款，運費未收；請店長確認後選擇免收運費再出貨");
+            if (!status.equals("READY") && !feeOnly) throw fail(409, "出貨單還有訂單未付款、未付尾款、未到貨或待核對，不能出貨");
             tracking = "MOCK-" + UUID.randomUUID();
             for (var m : members) if (!m.closed()) ship(m, customer, in.requestId(), actor, username, note, tracking);
             db.update("UPDATE shipment SET tracking_number=?,shipped_at=CURRENT_TIMESTAMP(6),version=version+1 WHERE id=?", tracking, id);
         } else {
             if (!status.equals("SHIPPED")) throw fail(409, "出貨單需全部已出貨才能標記送達");
+            // 與單筆端點相同的守門：有付款待核對或退貨中的訂單不可送達
+            if (members.stream().filter(m -> !m.closed()).anyMatch(ShipmentReader.Member::flagged)) throw fail(409, "出貨單有訂單付款待核對或退貨中，暫停送達");
             tracking = (String) s.get("tracking_number");
             if (tracking == null) {
-                // 單一訂單出貨單可能經舊的單筆端點出貨：沿用訂單上的測試貨件號與出貨時間
+                // 單一訂單出貨單經舊的單筆端點出貨：現貨沿用訂單的測試貨件號與出貨時間；預購的舊格式貨件號請用單筆端點送達
                 tracking = reader.view(s).trackingNumber();
+                if (tracking == null || !tracking.startsWith("MOCK-") || tracking.length() > 41) throw fail(409, "此出貨單已用單筆端點出貨，請用單筆端點標記送達");
                 db.update("UPDATE shipment SET tracking_number=?,shipped_at=(SELECT MIN(t) FROM (SELECT o.shipped_at t FROM customer_order o JOIN shipment_item i ON i.stock_order_id=o.id WHERE i.shipment_id=? UNION ALL SELECT p.shipped_at FROM preorder_order p JOIN shipment_item i ON i.preorder_order_id=p.id WHERE i.shipment_id=?) x) WHERE id=?", tracking, id, id, id);
             }
             for (var m : members) if (!m.closed() && !"DELIVERED".equals(m.fulfillment())) deliver(m, customer, in.requestId(), actor, username, note, tracking);

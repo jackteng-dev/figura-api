@@ -31,8 +31,9 @@ public final class ShippingPayloads {
     public record Event(String requestId, String shipmentId, int actorId, String actorUsername, String action, String note,
                         int beforeVersion, int afterVersion, String trackingNumber, OffsetDateTime createdAt) {}
     public record Detail(Shipment shipment, boolean mockEnabled, boolean canShip, boolean canDeliver, List<Event> events) {}
+    /** waiveUnpaidFee：承擔運費的訂單已結束、運費未收時，店長明確決定免收才可出貨（寫入稽核原因）。 */
     public record Command(@NotBlank @Pattern(regexp = UUID_PATTERN) String requestId, @NotNull @Min(1) Integer expectedVersion,
-                          @NotBlank @Size(max = 500) String note) {
+                          @NotBlank @Size(max = 480) String note, Boolean waiveUnpaidFee) {
         @JsonAnySetter public void unknown(String key, Object value) { throw new IllegalArgumentException("不支援的欄位"); }
     }
     public record Applied(Event event, Detail current, boolean replayed) {}

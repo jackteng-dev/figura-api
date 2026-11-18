@@ -1,6 +1,18 @@
 # Figura（原 ELPSY Shop） 後端交接
 
 
+## 2026-11-18：Phase 5 配送：運費、宅配／超商、合併／分開出貨、出貨單（V23，含 schema 變更）
+
+分支 `feat/shipping`（疊在 `feat/preorder-deposit` 上）。**新增 `V23__shipping_methods_and_shipments.sql`（受保護路徑），合併前需作者受控切換**；需先完成 V21、V22。V1–V22 未改。
+
+- **V23**：放寬 `customer_order.ck_order_totals`／`preorder_order.ck_preorder_order_amount` 的 `shipping_twd=0` 為 0–100000（新 migration 改 CHECK，不改舊檔）；`shipping_method`（HOME 宅配到府、CVS 超商取貨；基本運費、免運門檻、開放與否、版本）＋`shipping_method_event` 稽核；`shipment`（目的地快照、運費、商品金額、測試物流 carrier=TEST、`MOCK-` 貨件號）、`shipment_item`（每張訂單只屬一張出貨單）、`shipment_event`（整張出貨／送達稽核）；`checkout_group` 記錄配送方式／策略／運費；權限 258–263（出貨單讀取／詳情／出貨／送達、運費讀取／修改；一般員工只有讀取）。**預設費率是測試值（宅配 120／滿 3000 免運、超商 60／滿 1500 免運），上線前需作者核定**。
+- **結帳**：`GET /customer/checkout/quote?shippingMethod=HOME|CVS&deliveryStrategy=SPLIT|COMBINED`；`GET /customer/checkout/pickup-stores`（5 間**測試門市**，不是真實超商資料）；`POST /customer/checkout` 新增 `shippingMethod`、`deliveryStrategy`、`pickupStoreId`（省略＝宅配分開寄；舊客戶端未含運費的金額會 409 要求重新核對，不會默默多收）。SPLIT 每組一張出貨單、各自計運費；COMBINED 全部一張出貨單、只算一次運費（記在現貨單，沒有現貨時記在第一張預購單）。運費依每個包裹的商品金額判斷免運，記在承運訂單的 `shipping_twd`，所以付款、退款金額自動含運費；訂金預購的運費加在尾款。直接購買、直接預購維持原行為（免運、沒有出貨單）。
+- **出貨單**：狀態由組成訂單推導（WAITING 付款／尾款／到貨／待核對、READY、SHIPPED、DELIVERED、CANCELLED），`/admin/shipments`、`/admin/shipments/{id}`、`POST .../ship`、`.../deliver`（需 `MOCK_FULFILLMENT_ENABLED`）整張出貨或送達，同時寫入每張訂單既有的履約紀錄、版本、批次出貨數與通知；同 requestId 重送回原結果、內容不同 409。合併出貨單內的訂單不能用舊的單筆出貨端點（避免一半寄出）；單一訂單的出貨單兩種端點都可用。訂單詳情（現貨、預購）附上 `shipment`。
+- **運費規則**：`GET/PUT /admin/shipping-methods/{code}`（版本、原因、稽核、同 requestId 重送）；停用的配送方式報價 `ready=false`、下單 409。
+- 鎖序：出貨單操作 actor/grant → 顧客 → 現貨訂單 → 預購批次（排序）→ 預購訂單（排序）→ 出貨單，與付款、單筆履約、時程／尾款通知一致。
+- 測試：`ShippingIntegrationTest` 4 項（各方式／策略運費與免運門檻、超商合併出貨等預購到貨後整張出貨與送達、分開寄各訂單運費與訂金尾款含運費、單筆出貨相容、舊客戶端金額、運費規則稽核／版本／權限／停用）。`UnifiedCheckoutIntegrationTest` 金額改為含預設運費。全套 `mvn test`：313 項，只剩既有 8 項本機通知失敗（測試 context 屬性順序與 Phase 4 測試一致以共用連線）。本機瀏覽器（隔離 DB）：結帳切換宅配／超商、分開／一起寄，運費 240／120／0 正確；超商合併下單 → 兩張付款 → 等預購到貨 → 到貨分配 → 整張出貨 → 訂單頁顯示測試貨件號、訂單中心兩張皆已出貨。
+- 未完成／待確認：真實物流／超商 API、真實門市選擇、運費正式費率、部分出貨與退貨寄回運費，都需實際服務與作者核定（見 CLOUD_LOCAL_FOLLOWUP）。員工後台頁面未在瀏覽器實際操作（員工登入被本機權限設定擋下），以 API 測試與型別檢查涵蓋。
+
 ## 2026-11-18：Phase 4 預購訂金／尾款、延期與通知（V22，含 schema 變更）
 
 分支 `feat/preorder-deposit`（疊在 `feat/unified-cart` 上）。**新增 `V22__preorder_deposits_and_schedule.sql`（受保護路徑），合併前需作者受控切換**；需先完成 V21。V1–V21 未改。

@@ -159,6 +159,36 @@ class ShippingIntegrationTest extends ShopIntegrationSupport {
         assertEquals(120, stockOrder(d, data(ok(d, "POST", "/customer/checkout", fixed, 200)).path("orders").get(0).path("id").asText()).path("shippingTwd").asInt());
     }
 
+    /** 承擔運費的現貨單在出貨前取消：其餘預購到貨後需店長明確免收運費才能出貨；有待核對付款時不能送達。 */
+    @Test void carrierCancelledNeedsExplicitFeeWaiverAndFlaggedOrdersCannotBeDelivered() throws Exception {
+        var a = admin(); var f = fixture(a, 10, 1000); var g = fixture(a, 0, 900); var b = batch(a, g, 5, 900, true);
+        var c = customer(); String address = newAddress(c); addStock(c, f, 1); addPre(c, b, 1);
+        var placed = data(ok(c, "POST", "/customer/checkout", place(c, address, "HOME", "COMBINED", null), 200));
+        String stock = placed.path("orders").get(0).path("id").asText(), pre = placed.path("orders").get(1).path("id").asText();
+        assertEquals(120, stockOrder(c, stock).path("shippingTwd").asInt());
+        payPre(c, pre);
+        ok(c, "POST", "/customer/orders/" + stock + "/cancel", Map.of("expectedVersion", stockOrder(c, stock).path("version").asInt()), 200);
+        arrive(a, b, pre);
+        String id = preOrder(c, pre).path("shipment").path("id").asText();
+        var d = shipment(a, id);
+        assertEquals("WAITING", d.path("shipment").path("status").asText()); assertEquals("FEE", d.path("shipment").path("waitingFor").asText());
+        assertTrue(d.path("canShip").asBoolean(), "店長可以決定免收後出貨");
+        assertEquals(409, call(a, "POST", "/admin/shipments/" + id + "/ship", command(d, "出貨")).getResponse().getStatus(), "未明確免收不能出貨");
+        var waive = command(d, "顧客取消現貨，店長同意免收"); waive.put("waiveUnpaidFee", true);
+        var shipped = data(ok(a, "POST", "/admin/shipments/" + id + "/ship", waive, 201));
+        assertTrue(shipped.path("event").path("note").asText().startsWith("【免收未付運費】"));
+        assertEquals("SHIPPED", shipped.path("current").path("shipment").path("status").asText());
+        assertTrue(data(ok(a, "POST", "/admin/shipments/" + id + "/ship", waive, 200)).path("replayed").asBoolean());
+        // 出貨後出現未處理的付款核對：暫停送達
+        String payment = jdbc.queryForObject("SELECT id FROM preorder_mock_payment WHERE order_id=? AND status='SUCCEEDED'", String.class, pre);
+        String extra = uuid();
+        jdbc.update("INSERT INTO preorder_mock_payment(id,order_id,customer_id,request_id,expected_order_version,transaction_id,amount_twd,status,settled_at,stage) VALUES(?,?,?,?,1,?,900,'REVIEW_REQUIRED',CURRENT_TIMESTAMP(6),'FULL')", extra, pre, c.id(), uuid(), "mock_" + extra);
+        var flagged = shipment(a, id);
+        assertFalse(flagged.path("canDeliver").asBoolean());
+        assertEquals(409, call(a, "POST", "/admin/shipments/" + id + "/deliver", command(flagged, "送達")).getResponse().getStatus());
+        assertNotNull(payment);
+    }
+
     @Test void feeRulesAreAuditedVersionedAndStaffCannotChangeThem() throws Exception {
         var a = admin(); var methods = data(ok(a, "GET", "/admin/shipping-methods", null, 200));
         var home = methods.get(0); assertEquals("HOME", home.path("code").asText());
