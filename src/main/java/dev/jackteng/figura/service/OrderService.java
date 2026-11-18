@@ -25,7 +25,7 @@ public class OrderService {
  @Transactional(readOnly=true) public Page<View> list(String customer,int page,int pageSize){if(page<1||page>100000||pageSize<1||pageSize>20)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"分頁範圍不正確");return new Page<>(orders.list(customer,pageSize,(page-1)*pageSize).stream().map(this::view).toList(),page,pageSize,orders.count(customer));}
  /** 直接購買訂單的 cart_version 標記：購物車有品項時版本一定 ≥1，所以 0 只會是直接購買。 */
  private static final int DIRECT=0;
- private record Want(String productId,String skuId,int quantity){}
+ public record Want(String productId,String skuId,int quantity){}
  @Transactional(isolation=Isolation.READ_COMMITTED) public Applied place(String customer,Place input){
   if(shopping.lockCustomer(customer)==null)throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"顧客登入狀態無效");
   var prior=orders.request(customer,input.requestId());
@@ -50,6 +50,11 @@ public class OrderService {
    expireLocked(prior);return new Applied(view(require(orders.find(customer,prior.getId()))),true);
   }
   return create(customer,input.requestId(),DIRECT,input.addressId(),input.addressVersion(),input.expectedSubtotalTwd(),List.of(new Want(input.productId(),input.skuId(),input.quantity())),false);
+ }
+ /** 統一結帳（CheckoutService）用：必須在既有交易內呼叫，與預購子單同一交易；呼叫端已核對整車版本並先鎖好顧客、主檔與商品。會清掉購物車的現貨品項。 */
+ @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+ public Applied createForCheckout(String customer,String requestId,int cartVersion,String addressId,int addressVersion,long expectedSubtotal,List<Want> wanted){
+  return create(customer,requestId,cartVersion,addressId,addressVersion,expectedSubtotal,wanted,true);
  }
  private Applied create(String customer,String requestId,int cartVersion,String addressId,int addressVersion,long expectedSubtotal,List<Want> wanted,boolean fromCart){
   var address=shopping.address(addressId);if(address==null||address.isDeleted()||!address.getCustomerId().equals(customer))throw new ResponseStatusException(HttpStatus.NOT_FOUND,"找不到本人收件地址");
