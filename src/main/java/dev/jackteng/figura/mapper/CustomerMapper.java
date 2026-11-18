@@ -5,7 +5,6 @@ import org.apache.ibatis.annotations.*;
 
 @Mapper
 public interface CustomerMapper {
-    @Select("SELECT * FROM customer WHERE username=#{username}") Customer byUsername(String username);
     @Select("SELECT * FROM customer WHERE email=#{email}") Customer byEmail(String email);
     @Select("SELECT * FROM customer WHERE phone=#{phone}") Customer byPhone(String phone);
     @Select("SELECT * FROM customer WHERE id=#{id}") Customer byId(String id);

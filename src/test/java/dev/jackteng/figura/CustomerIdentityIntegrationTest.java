@@ -65,7 +65,7 @@ class CustomerIdentityIntegrationTest {
     }
     @Test void registrationValidationProjectionAndBcrypt() throws Exception {
         var guest=guest();String name=username();var result=register(guest,name);assertEquals(201,result.getResponse().getStatus());
-        var data=json.readTree(result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8)).path("data");assertEquals(Set.of("id","username","displayName","createdAt","email","phone","emailVerified"),json.convertValue(data,Map.class).keySet());
+        var data=json.readTree(result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8)).path("data");assertEquals(Set.of("id","createdAt","email","phone","emailVerified"),json.convertValue(data,Map.class).keySet());
         assertTrue(encoder.matches(PASSWORD,jdbc.queryForObject("SELECT password_hash FROM customer WHERE id=?",String.class,field(result,"id"))));
         assertEquals(409,register(guest,name.toUpperCase(Locale.ROOT)).getResponse().getStatus());
         assertEquals(400,call(guest,"POST","/customer/auth/register",Map.of("email",username()+"@example.test","phone",TestPhones.next(),"password",PASSWORD,"role","STAFF")).getResponse().getStatus());

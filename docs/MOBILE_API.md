@@ -8,8 +8,8 @@
 
 | POST `/mobile/customer/auth/...` | JSON | data |
 | --- | --- | --- |
-| register | username/password/displayName；與網站相同驗證 | Customer View，201 |
-| login | username/password/deviceId（標準小寫 UUID）/rememberMe=false | accessToken/refreshToken/expiresIn/customer |
+| register | email/phone/password（只收這三欄，多帶欄位 400）；與網站相同驗證 | Customer View `{id, createdAt, email, phone, emailVerified}`，201 |
+| login | username（**內容為手機或 Email**，欄位名稱沿用）/password/deviceId（標準小寫 UUID）/rememberMe=false | accessToken/refreshToken/expiresIn/customer |
 | refresh | refreshToken | 新 token pair，舊 pair 立即失效 |
 | logout | refreshToken | 空，撤銷該裝置目前 pair；舊 pair 不撤銷新 pair |
 
@@ -19,7 +19,7 @@ access 15 分鐘、refresh 7 天；refresh 輪替用 Redis 原子 compare-and-se
 
 ## 業務路由
 
-原 `/customer` 合約以 `/mobile/customer` aliases 重用相同 Controller／Service，body、版本、UUID、safe projection 與本人隔離完全相同：me GET/PATCH、cart GET/items PUT/DELETE、addresses GET/UUID PUT/DELETE、orders 與 preorders GET/POST/詳情/取消、mock-payments GET/POST、mock-payments 或 preorder-payments simulate POST、現貨 mock-return GET/POST。詳情見既有 CUSTOMER、SHOPPING、ORDERS、PAYMENTS、PREORDERS API 文件。
+原 `/customer` 合約以 `/mobile/customer` aliases 重用相同 Controller／Service，body、版本、UUID、safe projection 與本人隔離完全相同：me GET（暱稱修改已移除）、cart GET/items PUT/DELETE、addresses GET/UUID PUT/DELETE、orders 與 preorders GET/POST/詳情/取消、mock-payments GET/POST、mock-payments 或 preorder-payments simulate POST、現貨 mock-return GET/POST。詳情見既有 CUSTOMER、SHOPPING、ORDERS、PAYMENTS、PREORDERS API 文件。
 
 只此 namespace 使用獨立 SecurityFilterChain，忽略所有 Cookie，只接受 `Authorization: Bearer <customer_app access>`。原生入口不使用 CSRF；網站寫入即使帶原生 Bearer 仍須 CSRF。精確方法＋path allowlist 與網站共用，未知路由／方法拒絕；網站或員工 realm token、refresh 當 access、原生 Cookie-only 都401，無越權／轉發／共用員工入口。原 HMAC callback 路徑与唯一 exemptions 不改，mock feature flags 仍預設false。
 

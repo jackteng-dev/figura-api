@@ -31,7 +31,7 @@ public class CustomerSessionService {
     public Customer register(CustomerPayloads.Registration input) {
         var customer=new Customer();customer.setId(UUID.randomUUID().toString());
         customer.setPasswordHash(passwords.encode(input.password()));
-        // 手機＋Email＋密碼。username／display_name 欄位仍為資料庫必填，由系統產生、不對外使用。
+        // 手機＋Email＋密碼。username／display_name 欄位仍為資料庫必填（保留 schema 相容），由系統產生內部識別值，不對外、不能登入。
         String email=CustomerPayloads.normalizeEmail(input.email()), phone=CustomerPayloads.normalizePhone(input.phone());
         if (customers.byEmail(email)!=null) throw new ResponseStatusException(HttpStatus.CONFLICT,"此 Email 已被註冊");
         if (customers.byPhone(phone)!=null) throw new ResponseStatusException(HttpStatus.CONFLICT,"此手機號碼已被註冊");
@@ -152,7 +152,6 @@ public class CustomerSessionService {
         jwt.setJwtCookie(response,ACCESS_COOKIE,jwt.genAccessToken(claims),remember?(int)JwtUtil.ACCESS_LIFETIME.toSeconds():-1);
         jwt.setJwtCookie(response,REFRESH_COOKIE,jwt.genRefreshToken(claims),remember?(int)JwtUtil.REFRESH_LIFETIME.toSeconds():-1);
     }
-    private String normalize(String username){return username.toLowerCase(Locale.ROOT);}
     /** 登入失敗一律同一訊息，不揭露帳號是否存在。 */
     private ResponseStatusException badCredentials(){return new ResponseStatusException(HttpStatus.UNAUTHORIZED,"帳號或密碼不正確");}
     private ResponseStatusException unauthorized(){return new ResponseStatusException(HttpStatus.UNAUTHORIZED,"顧客登入狀態無效");}

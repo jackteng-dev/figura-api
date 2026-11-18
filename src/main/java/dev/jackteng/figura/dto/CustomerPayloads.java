@@ -13,7 +13,6 @@ public final class CustomerPayloads {
     private CustomerPayloads() {}
     /** 一般信箱格式（限 ASCII，存入前轉小寫）。 */
     public static final Pattern EMAIL = Pattern.compile("[A-Za-z0-9._%+\\-]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9\\-]{0,62}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9\\-]{0,62}[A-Za-z0-9])?)+");
-    public static final Pattern USERNAME = Pattern.compile("[A-Za-z0-9_]{3,32}");
 
     /** 台灣手機正規化為 09xxxxxxxx；接受 0912345678、0912-345-678、+886912345678、886 912 345 678、912345678。不合法回傳 null。 */
     public static String normalizePhone(String raw) {
@@ -63,11 +62,10 @@ public final class CustomerPayloads {
         @JsonAnySetter public void unknown(String name, Object value) { throw new IllegalArgumentException("不支援的欄位"); }
         @Override public String toString() { return "ResetPassword[credentials hidden]"; }
     }
-    /** 本人資料。email／phone／emailVerified 為 V19 新增欄位，舊帳號可能為 null／false。 */
-    public record View(String id, String username, String displayName, LocalDateTime createdAt,
-                       String email, String phone, boolean emailVerified) {
+    /** 本人資料：只回傳會員 ID、Email、手機與驗證狀態。系統內部的 username／display_name 欄位不對外。 */
+    public record View(String id, LocalDateTime createdAt, String email, String phone, boolean emailVerified) {
         public static View from(Customer c) {
-            return new View(c.getId(), c.getUsername(), c.getDisplayName(), c.getCreatedAt(), c.getEmail(), c.getPhone(), c.getEmailVerifiedAt() != null);
+            return new View(c.getId(), c.getCreatedAt(), c.getEmail(), c.getPhone(), c.getEmailVerifiedAt() != null);
         }
     }
     private static boolean withinBcryptLimit(String password) {
