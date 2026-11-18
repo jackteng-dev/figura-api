@@ -202,6 +202,23 @@ class ShippingIntegrationTest extends ShopIntegrationSupport {
         assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM shipment WHERE customer_id=?", Integer.class, c.id()));
     }
 
+    /** 單張預購經舊單筆端點出貨（mock_pre_ 貨件號）：出貨單顯示已出貨，但只能用原單筆端點送達。 */
+    @Test void legacyShippedPreorderIsDeliveredThroughItsOwnEndpoint() throws Exception {
+        var a = admin(); var g = fixture(a, 0, 900); var b = batch(a, g, 5, 900, true);
+        var c = customer(); String address = newAddress(c); addPre(c, b, 1);
+        String pre = data(ok(c, "POST", "/customer/checkout", place(c, address, "HOME", "SPLIT", null), 200)).path("orders").get(0).path("id").asText();
+        payPre(c, pre); arrive(a, b, pre);
+        var o = data(ok(a, "GET", "/admin/preorder-orders/" + pre, null, 200)).path("order");
+        ok(a, "POST", "/admin/preorder-orders/" + pre + "/mock-ship", Map.of("requestId", uuid(), "expectedOrderVersion", o.path("version").asInt(), "note", "單筆出貨"), 200);
+        String id = preOrder(c, pre).path("shipment").path("id").asText();
+        var d = shipment(a, id);
+        assertEquals("SHIPPED", d.path("shipment").path("status").asText()); assertFalse(d.path("canDeliver").asBoolean());
+        assertEquals(409, call(a, "POST", "/admin/shipments/" + id + "/deliver", command(d, "送達")).getResponse().getStatus());
+        o = data(ok(a, "GET", "/admin/preorder-orders/" + pre, null, 200)).path("order");
+        ok(a, "POST", "/admin/preorder-orders/" + pre + "/mock-deliver", Map.of("requestId", uuid(), "expectedOrderVersion", o.path("version").asInt(), "note", "單筆送達"), 200);
+        assertEquals("DELIVERED", shipment(a, id).path("shipment").path("status").asText());
+    }
+
     @Test void feeRulesAreAuditedVersionedAndStaffCannotChangeThem() throws Exception {
         var a = admin(); var methods = data(ok(a, "GET", "/admin/shipping-methods", null, 200));
         var home = methods.get(0); assertEquals("HOME", home.path("code").asText());

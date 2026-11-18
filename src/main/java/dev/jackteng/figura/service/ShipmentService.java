@@ -54,7 +54,9 @@ public class ShipmentService {
     private Detail detail(Map<String, Object> s) {
         var v = reader.view(s); var members = reader.members(v.id());
         boolean clean = members.stream().filter(m -> !m.closed()).noneMatch(ShipmentReader.Member::flagged)
-                && members.stream().anyMatch(m -> !m.closed() && "SHIPPED".equals(m.fulfillment()));
+                && members.stream().anyMatch(m -> !m.closed() && "SHIPPED".equals(m.fulfillment()))
+                // 經舊單筆端點出貨的預購（mock_pre_ 貨件號）只能用原單筆端點送達
+                && (s.get("tracking_number") != null || (v.trackingNumber() != null && v.trackingNumber().startsWith("MOCK-") && v.trackingNumber().length() <= 41));
         boolean ship = v.status().equals("READY") || ("FEE".equals(v.waitingFor()) && ShipmentReader.allReady(members));
         return new Detail(v, mockEnabled, mockEnabled && ship, mockEnabled && clean && v.status().equals("SHIPPED"),
                 db.query("SELECT * FROM shipment_event WHERE shipment_id=? ORDER BY created_at,request_id", events, v.id()));
