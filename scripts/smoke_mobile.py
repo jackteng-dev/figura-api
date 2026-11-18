@@ -27,7 +27,7 @@ class Client:
 admin=Client();admin.csrf=admin.ok('/auth/csrf')['token'];s,_=admin.call('/admin/login','POST',dict(username='shop_admin',password=os.environ['DEMO_ADMIN_PASSWORD'],deviceId=uid()),True);assert s==200
 anon=Client()
 def customer():
- c=Client();name='app_'+uuid.uuid4().hex[:20];pw=secrets.token_urlsafe(24);c.ok('/mobile/customer/auth/register','POST',dict(username=name,password=pw,displayName='App 合成會員'));t=c.ok('/mobile/customer/auth/login','POST',dict(username=name,password=pw,deviceId=uid(),rememberMe=False));c.token=t['accessToken'];return c,name,pw,t
+ c=Client();name='app_'+uuid.uuid4().hex[:20];pw=secrets.token_urlsafe(24);c.ok('/mobile/customer/auth/register','POST',dict(email=name+'@example.test',phone='09%08d'%(uuid.uuid4().int%10**8),password=pw));t=c.ok('/mobile/customer/auth/login','POST',dict(username=name+'@example.test',password=pw,deviceId=uid(),rememberMe=False));c.token=t['accessToken'];return c,name+'@example.test',pw,t
 c,name,pw,t=customer();other,_,_,_=customer();live,liveName,livePassword,_=customer()
 pdt=admin.ok('/admin/products','POST',dict(title='ELPSY 限定收藏模型',brand='ELPSY',category='公仔',description='App 串接驗證用合成收藏品',expectedVersion=0,skus=[dict(code='APP-'+uuid.uuid4().hex,label='標準款',priceTwd=1280,enabled=True)]));pid=pdt['id'];sku=pdt['skus'][0]['id'];inv='/admin/products/'+pid+'/skus/'+sku+'/inventory'
 admin.ok(inv+'/adjustments','POST',dict(requestId=uid(),expectedVersion=0,delta=30,reason='RESTOCK',note='Synthetic App fixture'));admin.ok('/admin/products/'+pid+'/publication','PATCH',dict(expectedVersion=pdt['version'],published=True))
