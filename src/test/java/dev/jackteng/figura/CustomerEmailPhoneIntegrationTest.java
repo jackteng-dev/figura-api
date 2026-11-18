@@ -93,8 +93,12 @@ class CustomerEmailPhoneIntegrationTest {
         assertEquals(email.toLowerCase(Locale.ROOT), d.path("email").asText());
         assertEquals(phone, d.path("phone").asText());
         assertFalse(d.path("emailVerified").asBoolean());
-        assertEquals("會員" + phone.substring(6), d.path("displayName").asText());
-        assertTrue(d.path("username").asText().startsWith("m_"));
+        // 本人資料不再回傳內部 username／display_name
+        assertTrue(d.path("username").isMissingNode() && d.path("displayName").isMissingNode());
+        String internal = jdbc.queryForObject("SELECT username FROM customer WHERE id=?", String.class, d.path("id").asText());
+        assertTrue(internal.startsWith("m_"));
+        // 系統產生的內部識別值不能拿來登入
+        assertEquals(401, call(guest(), "POST", "/customer/auth/login", Map.of("username", internal, "password", PASSWORD, "deviceId", UUID.randomUUID().toString(), "rememberMe", false)).getResponse().getStatus());
         // 註冊即寄出模擬驗證信
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM customer_mock_email WHERE customer_id=? AND purpose='VERIFY'", Integer.class, d.path("id").asText()));
         // 重複：信箱大小寫不同、手機不同寫法都視為同一個

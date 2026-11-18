@@ -4,7 +4,7 @@
 
 ## 本輪雲端範圍
 
-A 版啟動／正式 build／員工與顧客 Cookie 身分、本人暱稱隔離與真實 MySQL／Redis 聯測，商品／SKU 權限與公開瀏覽，SKU庫存與異動稽核，顧客購物車／本人地址，demo Flyway V1／V2／V3／V4／V5；詳細證據見 HANDOFF。使用免費工具和合成帳號，未連原 DB、物件儲存、真實金流、郵件或 LINE。
+A 版啟動／正式 build／員工與顧客 Cookie 身分、本人資料隔離與真實 MySQL／Redis 聯測，商品／SKU 權限與公開瀏覽，SKU庫存與異動稽核，顧客購物車／本人地址，demo Flyway V1／V2／V3／V4／V5；詳細證據見 HANDOFF。使用免費工具和合成帳號，未連原 DB、物件儲存、真實金流、郵件或 LINE。
 
 ## 到可用本地環境再補
 

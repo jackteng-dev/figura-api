@@ -1,5 +1,14 @@
 # Figura（原 ELPSY Shop） 後端交接
 
+## 2026-11-18：會員架構定案（正式電商方向）
+
+同分支 `feat/contact-only-login`，無 schema 變更、未改 `src/main/resources/`。作者決定不再保留練習版的暱稱、帳號名稱登入與舊註冊格式。
+
+- **本人資料 `View`** 只回傳 `{id, createdAt, email, phone, emailVerified}`；不再回傳內部 `username`／`displayName`（Web／App 同步移除）。`customer.username`／`display_name` 欄位保留（NOT NULL，維持 schema 相容），由系統產生內部值，不能登入、不對外。
+- **刪除無用程式**：舊會員 API `UserController`（`/api/user/*`，filter 早已回 410、不可達）；`CustomerPayloads.USERNAME`、`CustomerMapper.byUsername`、`CustomerSessionService.normalize`。`/api/user/*` 仍由 filter 回 410。員工端 `user` 表、`AdminUser*`、認證、Token、稽核未動。
+- **沙盒示範會員**：`DemoAccountInitializer`（demo profile）在提供私有 `DEMO_CUSTOMER_PASSWORD` 時建立 Email `demo-customer@example.com`、手機 `0900000000`、Email 已驗證的會員；已存在就不動、不重設密碼；未設定就不建立。README（三個 repo）與 App Release 說明使用同一組 Email／手機／密碼（`figura-demo-customer`）。公開沙盒需設定此變數並移除舊 `demo_customer` 種子。
+- **測試**：整合測試改驗 View 不含內部欄位，並以資料庫中的真實內部 username 驗證不能登入（401）。隔離 DB `mvn package`：284 項，失敗只有既有 8 項（NotificationIntegrationTest×7、PreorderOrderIntegrationTest×1；開 `MOCK_NOTIFICATIONS_ENABLED=true` 後剩 1 項，原因是測試 DB 不是空的，CI 用全新 DB 不受影響）。本機 demo 重啟後示範會員自動建立，用 Email（大小寫不同）與手機（含連字號）登入成功；HTTP smoke：customer 23、mobile 19、shopping 28、orders 24、payments 23 通過；App live 2 項、網站登入與會員頁實測通過。
+- **舊會員清理**：`work/cleanup-20261118/` 改為檢查「新版示範會員存在」（Email＋手機），舊 `demo_customer` 隨其他舊帳號刪除；隔離 DB 再演練一次清理＋單一交易回復，結果相同。
 ## 2026-11-18：直接購買（單一款式下單，不經購物車）
 
 分支 `feat/buy-now`（疊在 `feat/contact-only-login` 上；無 schema 變更、未改 `src/main/resources/`）。
@@ -14,10 +23,10 @@
 
 - 註冊只接受 `phone`＋`email`＋`password`；送 `username`／`displayName` 回 400（舊格式與 Flutter App 舊註冊格式都停用）。
 - 登入識別只認 Email 或台灣手機；系統產生的內部 `username`（`m_…`）與舊帳號名稱都不能登入。
-- 移除暱稱修改：`PATCH /customer/me`、`/mobile/customer/me` 與 `Profile` DTO、`updateOwnDisplayName`。`username`／`display_name` 欄位仍是資料庫必填，由系統產生、不對外使用；`View` 仍回傳兩欄（App 相容）。
+- 移除暱稱修改：`PATCH /customer/me`、`/mobile/customer/me` 與 `Profile` DTO、`updateOwnDisplayName`。`username`／`display_name` 欄位仍是資料庫必填，由系統產生、不對外使用；（2026-11-18 起 `View` 不再回傳這兩欄，見最上方）。
 - 測試全面改為手機＋Email 註冊（`TestPhones`），身分測試改成驗證「舊格式被拒、帳號名稱不能登入」。完整測試僅剩既有 8 個失敗。
 - **HTTP smoke 腳本（2026-11-18 補）**：`scripts/smoke_*.py` 共 13 支原本仍用帳號名稱＋暱稱註冊、帳號名稱登入，在本分支會全部失敗（CI 只跑 Maven 測試，沒有跑這些腳本，所以 CI 綠燈沒有發現）。已改成手機＋Email 註冊、Email 登入；`smoke_customer.py` 改驗「舊格式註冊 400、帳號名稱登入 401、修改暱稱 403、本人資料含 Email／手機」；`smoke_mobile.py` 產生的 App fixture `APP_TEST_USERNAME` 改為 Email。本機隔離 demo（feat/buy-now 建置）實跑：customer 23、mobile 19、shopping 28、orders 24、payments 23、preorders 30 項通過；`smoke_preorder_orders` 在「MOCK 通知派送」失敗，因本機 demo 設定未開 `MOCK_NOTIFICATIONS_ENABLED`（與既有 NotificationIntegrationTest 失敗同源），註冊／登入步驟已通過。
-- **沙盒示範帳號（上線前必做，伺服器端）**：每日重置建立的 `demo_customer` 沒有 Email／手機，本分支上線後**無法登入**，而且會被舊帳號清理腳本視為舊帳號刪除。重置種子需在本分支部署前改成同時寫入 `email='demo-customer@example.com'`（`example.com` 為保留網域；手機可留空），README 已改用此 Email 說明。種子在本 repo 之外，未修改。員工示範帳號 `shop_admin`／`shop_staff` 不受影響。
+- **沙盒示範帳號（上線前必做，伺服器端）**：每日重置建立的 `demo_customer` 沒有 Email／手機，本分支上線後**無法登入**，而且會被舊帳號清理腳本視為舊帳號刪除。（2026-11-18 更新：改由 `DemoAccountInitializer` 建立新版示範會員，見最上方；舊 `demo_customer` 種子移除即可。）員工示範帳號 `shop_admin`／`shop_staff` 不受影響。
 - **Flutter App 相容**：App 需同時更新（figura-app `feat/contact-only-login`）：註冊改手機＋Email、登入接受 Email、移除修改暱稱。舊版 App 在本分支上線後：登入用手機可以（舊版欄位驗證擋 Email）、註冊與修改暱稱會失敗。
 - **舊帳號刪除**：本機 demo DB 已刪 3 個舊帳號（無訂單）。正式環境需由伺服器端在部署之後、維護時段內，依 `work/cleanup-20261118/README.md` 執行（不進 Git；`backup.sh` 整庫＋逐列備份與只讀預演 → `02-cleanup.sql` 單一交易清理 → `03-verify.sql` 核對 → 清 Redis；回復用 `restore-rows.sh` 單一交易逐列回復或整庫還原）。**舊的 `work/cleanup-legacy-customers.sql` 已停用**（改名 `.SUPERSEDED.sql.txt`：沒有示範帳號保護、逐表核對與回復程序，且已出貨預購會把到貨數錯誤釋出）。2026-11-18 新版在隔離測試 DB 演練：清理→逐列回復後 24 張表 CHECKSUM 與計數和清理前完全相同。已在隔離測試 DB 以 ROLLBACK 演練 273 個舊帳號／215 訂單／67 預購，約束與庫存／配額計數全部一致。執行後另刪 Redis `shop:customer:session:<id>:*`、`shop:customer:mobile:session:<id>:*`。
 
