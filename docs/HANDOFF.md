@@ -1,5 +1,17 @@
 # Figura（原 ELPSY Shop） 後端交接
 
+
+## 2026-11-18：Phase 3 統一購物車與結帳（V21，含 schema 變更）
+
+分支 `feat/unified-cart`（疊在 `feat/order-center` 上）。**新增 `V21__unified_cart_and_checkout_groups.sql`，屬受保護路徑 `src/main/resources/`：合併前需作者在伺服器端做受控切換（contract switch）**；V1–V20 未改。
+
+- **V21**：`customer_cart_preorder`（本人購物車的預購項目，以批次為鍵、1–100 件，FK 到購物車與批次）；`checkout_group`（一次結帳，`UNIQUE(customer_id,request_id)`＋內容 fingerprint）；`checkout_group_order`（每張子單一列，現貨／預購恰一，訂單 ID 唯一）。只新增表，不改既有欄位。
+- **購物車**：`PUT/DELETE /customer/cart/preorders/{batchId}`（及 `/mobile/...`），核對整車版本；批次需 OPEN、未截止、商品上架且 SKU 啟用、數量 ≤ 可用配額；**不保留配額**。現貨＋預購合計最多 50 個品項。`CartView` 新增 `preorders`、`preorderSubtotalTwd`、`totalTwd`、`checkoutReady`（原 `items`／`subtotalTwd`／`ready` 只計現貨，舊客戶端相容）。
+- **結帳**：`GET /customer/checkout/quote` 回伺服器分組（現貨一組；每個預購批次一組，含到貨區間／月份、截單、payNow／payLater）；`POST /customer/checkout`（`requestId`、`cartVersion`、`addressId`、`addressVersion`、`expectedTotalTwd`）**單一交易**：customer 鎖 → master guard → 依 ID 排序鎖商品 → 重讀購物車核對總額 → 建立現貨子單（重用 `OrderService.createForCheckout`，MANDATORY）→ 依批次 ID 排序建立預購子單（重用 `PreorderOrderService.place`）→ 清空購物車（現貨與預購）→ 版本＋1。任何一張失敗（配額不足、價格變動、版本不符）**全部回滾**，購物車保留。子單 requestId 由主 requestId 決定性衍生；同 requestId 同內容重送回目前狀態（`replayed=true`）且不再保留，不同內容 409。
+- **相容**：舊 `POST /customer/orders`（購物車只結現貨）照舊運作，且不動預購項目；`/orders/direct`（直接購買）、`/preorders`（直接預購）不變。
+- 測試：`UnifiedCheckoutIntegrationTest` 6 項（混合拆單與冪等、任一預購失敗連現貨一起回滾、價格／版本／欄位／他人地址／未登入、批次狀態與配額與版本、舊端點相容、並發搶最後配額只有一方成功與純預購購物車）。各 Flyway 筆數斷言改為比對 classpath 上的 migration 檔數（之後新增 migration 不必再改測試）。隔離 DB 全套 `mvn test`：304 項，失敗只剩既有 8 項通知相關（本機 `MOCK_NOTIFICATIONS_ENABLED` 與非空 DB；CI 用全新 DB）。本機 demo 啟動自動套用 V21；網站與 App 實機下單（混合 3 張、純預購 1 張）通過。
+- 待辦（非阻斷）：舊會員清理包（`work/cleanup-20261118/`）如需再執行，要納入 `checkout_group*` 與 `customer_cart_preorder`。
+
 ## 2026-11-18：Phase 2 統一訂單中心（唯讀 API）
 
 分支 `feat/order-center`（疊在 `feat/buy-now` 上）。**無 schema、未改受保護路徑**。
