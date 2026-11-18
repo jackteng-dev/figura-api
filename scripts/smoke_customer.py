@@ -39,7 +39,11 @@ check('顧客不可呼叫員工身分',guest.request('/auth/me')[0]==401)
 check('顧客不可讀員工角色',guest.request('/admin/role')[0]==401)
 owner=register[1]['data']['id']
 check('查詢參數不能改變本人',guest.request('/customer/me?id='+str(uuid.uuid4()))[1]['data']['id']==owner)
-check('帳號名稱＋暱稱註冊已停用 400',guest.request('/customer/auth/register','POST',dict(username='legacy_'+uuid.uuid4().hex[:12],password=password,displayName='合成會員'))[0]==400)
+def legacy_extra(field,value):
+ body=dict(email='legacy_'+uuid.uuid4().hex[:12]+'@example.test',phone='09%08d'%(uuid.uuid4().int%10**8),password=password);body[field]=value
+ return guest.request('/customer/auth/register','POST',body)[0]
+check('合法註冊內容多帶 username 仍拒絕 400',legacy_extra('username','legacy_'+uuid.uuid4().hex[:12])==400)
+check('合法註冊內容多帶 displayName 仍拒絕 400',legacy_extra('displayName','合成會員')==400)
 check('帳號名稱登入已停用 401',guest.clone().request('/customer/auth/login','POST',dict(username=register[1]['data']['username'],password=password,deviceId=str(uuid.uuid4()),rememberMe=False))[0]==401)
 check('修改暱稱已停用',guest.request('/customer/me','PATCH',dict(displayName='我的收藏'))[0]==403)
 check('本人資料含 Email／手機',guest.request('/customer/me')[1]['data']['email']==name+'@example.test' and guest.request('/customer/me')[1]['data']['phone'].startswith('09'))
