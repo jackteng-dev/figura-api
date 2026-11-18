@@ -190,6 +190,18 @@ class ShippingIntegrationTest extends ShopIntegrationSupport {
         assertNotNull(payment);
     }
 
+    /** 預先用直接預購占用可推導的子單編號：結帳不得沿用那張未含運費的訂單。 */
+    @Test void checkoutRefusesPreexistingChildOrderWithDifferentBilling() throws Exception {
+        var a = admin(); var g = fixture(a, 0, 1000); var b = batch(a, g, 5, 1000, true);
+        var c = customer(); String address = newAddress(c); addPre(c, b, 1);
+        var body = place(c, address, "HOME", "SPLIT", null);
+        String childId = UUID.nameUUIDFromBytes(("checkout|" + body.get("requestId") + "|" + b.path("id").asText()).getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
+        ok(c, "POST", "/customer/preorders", Map.of("requestId", childId, "batchId", b.path("id").asText(), "quantity", 1, "addressId", address, "addressVersion", 1, "expectedSubtotalTwd", 1000L), 201);
+        body.put("cartVersion", cart(c).path("version").asInt());
+        assertEquals(409, call(c, "POST", "/customer/checkout", body).getResponse().getStatus());
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM shipment WHERE customer_id=?", Integer.class, c.id()));
+    }
+
     @Test void feeRulesAreAuditedVersionedAndStaffCannotChangeThem() throws Exception {
         var a = admin(); var methods = data(ok(a, "GET", "/admin/shipping-methods", null, 200));
         var home = methods.get(0); assertEquals("HOME", home.path("code").asText());

@@ -155,6 +155,8 @@ public class CheckoutService {
         if (!locked.items().isEmpty()) {
             var wants = locked.items().stream().map(i -> new OrderService.Want(i.productId(), i.skuId(), i.quantity())).toList();
             var applied = orders.createForCheckout(customer, child(in.requestId(), "STOCK"), in.cartVersion(), in.addressId(), in.addressVersion(), locked.subtotalTwd(), wants, feeOf.getOrDefault("STOCK", 0));
+            // 新的結帳一定建立新子單：子單編號已被其他操作使用（例如先用直接下單占用）就拒絕，避免沿用不同計費內容的訂單
+            if (applied.replayed()) throw fail(HttpStatus.CONFLICT, "操作編號已用於其他訂單，請重新整理後再結帳");
             db.update("INSERT INTO checkout_group_order(group_id,position,stock_order_id) VALUES(?,?,?)", groupId, position++, applied.order().id());
             orderOf.put("STOCK", new String[]{"STOCK", applied.order().id()});
         }
@@ -163,6 +165,7 @@ public class CheckoutService {
         for (var p : batches) {
             var applied = preorders.place(customer, new PreorderOrderPayloads.Place(child(in.requestId(), p.batchId()), p.batchId(), p.quantity(),
                     in.addressId(), in.addressVersion(), p.lineTotalTwd()), feeOf.getOrDefault("PREORDER:" + p.batchId(), 0));
+            if (applied.replayed()) throw fail(HttpStatus.CONFLICT, "操作編號已用於其他訂單，請重新整理後再結帳");
             db.update("INSERT INTO checkout_group_order(group_id,position,preorder_order_id) VALUES(?,?,?)", groupId, position++, applied.order().id());
             orderOf.put("PREORDER:" + p.batchId(), new String[]{"PREORDER", applied.order().id()});
         }
