@@ -15,7 +15,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 /** Phase 5：配送方式與運費、合併／分開出貨、超商取貨（測試門市）、出貨單整張出貨（測試物流）。 */
-@SpringBootTest(properties = {"shop.orders.expiry-delay-ms=600000", "MOCK_PAYMENTS_ENABLED=true", "MOCK_REFUNDS_ENABLED=true", "MOCK_FULFILLMENT_ENABLED=true"}) // 與 PreorderDepositIntegrationTest 相同順序以共用測試 context（連線數）
+// 模擬旗標由環境變數開啟；共用既有預購測試 context（MySQL 連線數）
+@SpringBootTest(properties="shop.orders.expiry-delay-ms=600000")
 @AutoConfigureMockMvc(print = MockMvcPrint.NONE) @ActiveProfiles("demo")
 @EnabledIfEnvironmentVariable(named = "SHOP_MYSQL_INTEGRATION", matches = "true")
 class ShippingIntegrationTest extends ShopIntegrationSupport {
