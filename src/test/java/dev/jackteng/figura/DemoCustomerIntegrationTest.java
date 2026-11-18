@@ -106,7 +106,10 @@ class DemoCustomerIntegrationTest {
 
     @Test void existingResetLinkCannotChangeTheDemoPassword() throws Exception {
         seeder.ensure();
-        String id = demoId(), token = UUID.randomUUID().toString().replace("-", "") + UUID.randomUUID().toString().replace("-", "");
+        byte[] raw = new byte[32]; new java.security.SecureRandom().nextBytes(raw);
+        // 與 CustomerEmailService.issue() 相同格式：32 bytes → Base64 URL 無 padding（43 字元），確保測到的是示範帳號保護而不是格式錯誤
+        String id = demoId(), token = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(raw);
+        assertEquals(43, token.length());
         String hash = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8)));
         jdbc.update("INSERT INTO customer_email_token(id,customer_id,purpose,token_hash,email,expires_at) VALUES(?,?,'RESET',?,?,?)",
                 UUID.randomUUID().toString(), id, hash, DemoCustomerSeeder.EMAIL, java.time.LocalDateTime.now().plusMinutes(30));
