@@ -32,6 +32,14 @@ class OrderCenterIntegrationTest extends ShopIntegrationSupport {
         assertEquals(200, signed(callback, new HashMap<>(Map.of("eventId", uuid(), "paymentId", p.path("id").asText(), "transactionId", "mock_" + p.path("id").asText(),
                 "amountTwd", p.path("amountTwd").asLong(), "currency", "TWD", "outcome", "SUCCESS"))).getResponse().getStatus());
     }
+    /** 先建立付款意圖、取消訂單，再送到成功通知：原始狀態維持已取消，但需要人工核對。 */
+    private void latePaymentAfterCancel(Client c, JsonNode order) throws Exception {
+        var p = data(ok(c, "POST", "/customer/orders/" + order.path("id").asText() + "/mock-payments", Map.of("requestId", uuid(), "expectedOrderVersion", order.path("version").asInt()), 200)).path("payment");
+        var fresh = data(ok(c, "GET", "/customer/orders/" + order.path("id").asText(), null, 200));
+        ok(c, "POST", "/customer/orders/" + order.path("id").asText() + "/cancel", Map.of("expectedVersion", fresh.path("version").asInt()), 200);
+        assertEquals(200, signed("/payments/mock/callback", new HashMap<>(Map.of("eventId", uuid(), "paymentId", p.path("id").asText(), "transactionId", "mock_" + p.path("id").asText(),
+                "amountTwd", p.path("amountTwd").asLong(), "currency", "TWD", "outcome", "SUCCESS"))).getResponse().getStatus());
+    }
     private JsonNode center(Client c, String query) throws Exception { return data(ok(c, "GET", "/customer/order-center" + query, null, 200)); }
     private List<String> ids(JsonNode page) { var out = new ArrayList<String>(); page.path("items").forEach(i -> out.add(i.path("id").asText())); return out; }
 
@@ -91,14 +99,27 @@ class OrderCenterIntegrationTest extends ShopIntegrationSupport {
         assertEquals(400, call(c, "GET", "/customer/order-center?sort=created_at", null).getResponse().getStatus());
     }
 
+    @Test void unresolvedPaymentReviewWinsOverTheOriginalStatus() throws Exception {
+        var a = admin(); var f = fixture(a, 5, 600); var c = customer();
+        var o = stockOrder(c, f, 1, 600);
+        latePaymentAfterCancel(c, o);
+        var detail = data(ok(c, "GET", "/customer/orders/" + o.path("id").asText(), null, 200));
+        assertEquals("CANCELLED", detail.path("status").asText()); // 原始狀態不變
+        var page = center(c, "?stage=REVIEW");
+        assertEquals(List.of(o.path("id").asText()), ids(page));
+        assertTrue(page.path("items").get(0).path("paymentReviewRequired").asBoolean());
+        assertEquals(1, page.path("counts").path("REVIEW").asInt());
+        assertEquals(0, center(c, "?stage=CANCELLED").path("total").asInt()); // 不會同時被算進已取消
+    }
+
     @Test void appBearerSeesTheSameOwnOrders() throws Exception {
         var a = admin(); var f = fixture(a, 5, 700); var c = customer();
         var o = stockOrder(c, f, 1, 700);
-        String email = jdbc.queryForObject("SELECT email FROM customer WHERE id=?", String.class, c.id());
+        String email = jdbc.queryForObject("SELECT email FROM customer WHERE id=?", String.class, c.id()), device = uuid();
         var login = mvc.perform(post("/figura/api/mobile/customer/auth/login").contextPath("/figura").servletPath("/api/mobile/customer/auth/login").contentType("application/json")
-                .content(json.writeValueAsBytes(Map.of("username", email, "password", "test-shop-password-2026", "deviceId", uuid(), "rememberMe", false)))).andReturn();
+                .content(json.writeValueAsBytes(Map.of("username", email, "password", "test-shop-password-2026", "deviceId", device, "rememberMe", false)))).andReturn();
         assertEquals(200, login.getResponse().getStatus());
-        String token = data(login).path("accessToken").asText(); sessions.add("shop:customer:mobile:session:" + c.id() + ":*");
+        String token = data(login).path("accessToken").asText(); sessions.add("shop:customer:mobile:session:" + c.id() + ":" + device);
         var r = mvc.perform(get("/figura/api/mobile/customer/order-center").contextPath("/figura").servletPath("/api/mobile/customer/order-center").header("Authorization", "Bearer " + token)).andReturn();
         assertEquals(200, r.getResponse().getStatus());
         assertEquals(List.of(o.path("id").asText()), ids(data(r)));

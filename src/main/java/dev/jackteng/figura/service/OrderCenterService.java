@@ -25,33 +25,40 @@ public class OrderCenterService {
     public OrderCenterService(NamedParameterJdbcTemplate db) { this.db = db; }
 
     /** 兩種訂單的共同欄位；stage 依原始狀態推導（付款待核對優先於履約進度）。 */
+    /** 兩種訂單的共同欄位。現貨明細以「本人訂單」範圍內的彙總 join 取得（不對每筆訂單跑多個子查詢）。 */
     private static final String UNION = """
         SELECT 'STOCK' kind, o.id, o.status, o.created_at, o.subtotal_twd + o.shipping_twd total_twd, o.expires_at,
                NULL arrival_from, NULL arrival_to, NULL arrival_status, o.fulfillment_status,
-               (SELECT COUNT(*) FROM customer_order_line l WHERE l.order_id=o.id) line_count,
-               (SELECT COALESCE(SUM(l.quantity),0) FROM customer_order_line l WHERE l.order_id=o.id) quantity,
-               (SELECT l.title FROM customer_order_line l WHERE l.order_id=o.id ORDER BY l.product_id, l.sku_id LIMIT 1) title,
-               (SELECT l.product_id FROM customer_order_line l WHERE l.order_id=o.id ORDER BY l.product_id, l.sku_id LIMIT 1) product_id,
+               COALESCE(a.line_count,0) line_count, COALESCE(a.quantity,0) quantity, fl.title, fl.product_id,
                EXISTS(SELECT 1 FROM mock_payment p WHERE p.order_id=o.id AND p.status='REVIEW_REQUIRED'
                       AND NOT EXISTS(SELECT 1 FROM mock_refund_event r WHERE r.payment_id=p.id AND r.action='REVIEW_REFUND')) review,
                EXISTS(SELECT 1 FROM mock_order_return t WHERE t.order_id=o.id AND t.status IN ('REQUESTED','RECEIVED')) returning
-          FROM customer_order o WHERE o.customer_id=:customer
+          FROM customer_order o
+          LEFT JOIN (SELECT l.order_id, COUNT(*) line_count, SUM(l.quantity) quantity, MIN(CONCAT(l.product_id,'|',l.sku_id)) first_key
+                       FROM customer_order_line l JOIN customer_order lo ON lo.id=l.order_id AND lo.customer_id=:customer
+                      GROUP BY l.order_id) a ON a.order_id=o.id
+          LEFT JOIN customer_order_line fl ON fl.order_id=o.id AND CONCAT(fl.product_id,'|',fl.sku_id)=a.first_key
+         WHERE o.customer_id=:customer
         UNION ALL
         SELECT 'PREORDER', p.id, p.status, p.created_at, p.subtotal_twd + p.shipping_twd, p.expires_at,
                p.arrival_from, p.arrival_to, p.arrival_status, p.fulfillment_status,
-               1, p.quantity, p.product_title,
-               (SELECT b.product_id FROM preorder_batch b WHERE b.id=p.batch_id),
+               1, p.quantity, p.product_title, b.product_id,
                EXISTS(SELECT 1 FROM preorder_mock_payment m LEFT JOIN preorder_refund_event f ON f.payment_id=m.id
                       WHERE m.order_id=p.id AND m.status='REVIEW_REQUIRED' AND f.request_id IS NULL),
                FALSE
-          FROM preorder_order p WHERE p.customer_id=:customer
+          FROM preorder_order p LEFT JOIN preorder_batch b ON b.id=p.batch_id
+         WHERE p.customer_id=:customer
         """;
+    /**
+     * 未處理的付款核對最優先：失敗後或取消／逾時後才晚到的成功通知，原始狀態不變但需要人工處理，
+     * 必須出現在「付款待核對」並計入筆數；核對完成（退款事件）後回到原本階段。
+     */
     private static final String STAGED = """
         SELECT u.*, CASE
+            WHEN u.review THEN 'REVIEW'
             WHEN u.status IN ('PENDING_PAYMENT','PENDING') THEN 'PENDING_PAYMENT'
             WHEN u.status IN ('CANCELLED','EXPIRED') THEN 'CANCELLED'
             WHEN u.status='REFUNDED' THEN 'REFUNDED'
-            WHEN u.review THEN 'REVIEW'
             WHEN u.returning THEN 'RETURNING'
             WHEN u.kind='PREORDER' AND u.arrival_status='NOT_ARRIVED' THEN 'WAITING_ARRIVAL'
             WHEN u.fulfillment_status='SHIPPED' THEN 'SHIPPED'
@@ -67,10 +74,10 @@ public class OrderCenterService {
         String byKind = " WHERE (:kind='ALL' OR s.kind=:kind)";
         String filtered = byKind + " AND (:stage='ALL' OR s.stage=:stage)";
         String order = switch (sort) {
-            case NEWEST -> " ORDER BY s.created_at DESC, s.id DESC";
-            case OLDEST -> " ORDER BY s.created_at ASC, s.id ASC";
-            case AMOUNT_DESC -> " ORDER BY s.total_twd DESC, s.created_at DESC, s.id DESC";
-            case AMOUNT_ASC -> " ORDER BY s.total_twd ASC, s.created_at DESC, s.id DESC";
+            case NEWEST -> " ORDER BY s.created_at DESC, s.kind, s.id DESC";
+            case OLDEST -> " ORDER BY s.created_at ASC, s.kind DESC, s.id ASC";
+            case AMOUNT_DESC -> " ORDER BY s.total_twd DESC, s.created_at DESC, s.kind, s.id DESC";
+            case AMOUNT_ASC -> " ORDER BY s.total_twd ASC, s.created_at DESC, s.kind, s.id DESC";
         };
         String from = " FROM (" + STAGED + ") s";
         long total = db.queryForObject("SELECT COUNT(*)" + from + filtered, p, Long.class);
