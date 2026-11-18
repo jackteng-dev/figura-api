@@ -30,6 +30,7 @@ public final class OrderPayloads {
  public record Line(String skuId,String productId,String title,String label,int quantity,int unitPriceTwd,long lineTotalTwd) {}
  public record Shipping(String recipientName,String phone,String postalCode,String city,String district,String street) {}
  public record View(String id,String status,int version,long subtotalTwd,int shippingTwd,long totalTwd,
-  Shipping shipping,List<Line> items,LocalDateTime createdAt,LocalDateTime expiresAt,LocalDateTime closedAt,LocalDateTime paidAt,FulfillmentPayloads.Progress fulfillment,RefundPayloads.Progress refund,ReturnPayloads.Progress returnProgress) {}
+  Shipping shipping,List<Line> items,LocalDateTime createdAt,LocalDateTime expiresAt,LocalDateTime closedAt,LocalDateTime paidAt,FulfillmentPayloads.Progress fulfillment,RefundPayloads.Progress refund,ReturnPayloads.Progress returnProgress,
+  /** Phase 5：所屬出貨單（舊訂單沒有，為 null） */ ShippingPayloads.Shipment shipment) {}
  public record Applied(View order,boolean replayed) {}
 }

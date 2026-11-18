@@ -22,14 +22,26 @@ public final class CheckoutPayloads {
                              OffsetDateTime deadlineAt, List<QuoteLine> lines, long subtotalTwd, int shippingTwd, long totalTwd,
                              long payNowTwd, long payLaterTwd, boolean ready, String paymentMode) {}
     /** 結帳預覽：不保留庫存或配額。cartVersion 與 totalTwd 送出時要原樣帶回核對。 */
-    public record Quote(int cartVersion, List<QuoteGroup> groups, long subtotalTwd, int shippingTwd, long totalTwd, long payNowTwd, long payLaterTwd, boolean ready) {}
+    /**
+     * 一張出貨單（Phase 5）：SPLIT 每組一張；COMBINED 全部合成一張（現貨等預購到貨一起寄）。
+     * 運費記在 carrierKey 那一組（合併時優先現貨組）；goodsTwd 達到免運門檻即免運。
+     */
+    public record QuoteShipment(String key, List<String> groupKeys, String carrierKey, long goodsTwd, int feeTwd) {}
+    public record Quote(int cartVersion, List<QuoteGroup> groups, long subtotalTwd, int shippingTwd, long totalTwd, long payNowTwd, long payLaterTwd, boolean ready,
+                        String shippingMethod, String deliveryStrategy, List<QuoteShipment> shipments, List<ShippingPayloads.Method> methods, boolean shippingAvailable) {}
 
     public record Place(@NotBlank @Pattern(regexp = UUID) String requestId,
                         @NotNull @Min(1) Integer cartVersion,
                         @NotBlank @Pattern(regexp = UUID) String addressId,
                         @NotNull @Min(1) Integer addressVersion,
-                        @NotNull @Min(0) Long expectedTotalTwd) {
+                        @NotNull @Min(0) Long expectedTotalTwd,
+                        // Phase 5：省略＝宅配、分開寄。超商取貨需選測試門市；金額（含運費）以 expectedTotalTwd 核對
+                        @Pattern(regexp = "HOME|CVS") String shippingMethod,
+                        @Pattern(regexp = "SPLIT|COMBINED") String deliveryStrategy,
+                        @Size(max = 32) String pickupStoreId) {
         @JsonAnySetter public void unknown(String name, Object value) { throw new IllegalArgumentException("不支援的欄位"); }
+        public String method() { return shippingMethod == null ? "HOME" : shippingMethod; }
+        public String strategy() { return deliveryStrategy == null ? "SPLIT" : deliveryStrategy; }
     }
     /** 建立結果中的一張子訂單（詳情與付款走各自既有 API）。 */
     public record PlacedOrder(String kind, String id, String status, long totalTwd, OffsetDateTime expiresAt, String title) {}

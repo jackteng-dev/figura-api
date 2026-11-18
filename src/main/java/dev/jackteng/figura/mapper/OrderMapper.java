@@ -12,6 +12,7 @@ public interface OrderMapper {
  @Select("SELECT COUNT(*) FROM customer_order WHERE customer_id=#{customer} AND status='PENDING_PAYMENT'") int pending(String customer);
  @Select("SELECT CURRENT_TIMESTAMP(6)") java.time.LocalDateTime now();
  @Insert("INSERT INTO customer_order(id,customer_id,request_id,cart_version,address_id,address_version,subtotal_twd,recipient_name,phone,postal_code,city,district,street,expires_at) VALUES(#{id},#{customerId},#{requestId},#{cartVersion},#{addressId},#{addressVersion},#{subtotalTwd},#{recipientName},#{phone},#{postalCode},#{city},#{district},#{street},#{expiresAt})") void insert(CustomerOrder order);
+ @Update("UPDATE customer_order SET shipping_twd=#{fee} WHERE id=#{id} AND status='PENDING_PAYMENT'") int setShipping(@Param("id") String id,@Param("fee") int fee);
  @Insert("INSERT INTO customer_order_line(order_id,sku_id,product_id,title,label,quantity,unit_price_twd) VALUES(#{orderId},#{skuId},#{productId},#{title},#{label},#{quantity},#{unitPriceTwd})") void insertLine(CustomerOrderLine line);
  @Select("SELECT * FROM customer_order_line WHERE order_id=#{id} ORDER BY product_id,sku_id") List<CustomerOrderLine> lines(String id);
  @Update("UPDATE sku_inventory SET reserved=reserved+#{qty},version=version+1 WHERE sku_id=#{sku} AND quantity-reserved>=#{qty}") int reserve(@Param("sku") String sku,@Param("qty") int qty);

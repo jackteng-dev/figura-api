@@ -20,8 +20,8 @@ import java.util.*;
 public class PreorderOrderService {
  private static final ZoneOffset TAIPEI=ZoneOffset.ofHours(8);
  private final JdbcTemplate db; private final ObjectMapper json; private final ShoppingMapper shopping;
- private final CatalogMapper catalog; private final CatalogMasterService masters; private final NotificationCapture notifications;
- public PreorderOrderService(JdbcTemplate db,ObjectMapper json,ShoppingMapper shopping,CatalogMapper catalog,CatalogMasterService masters,NotificationCapture notifications){this.db=db;this.json=json;this.shopping=shopping;this.catalog=catalog;this.masters=masters;this.notifications=notifications;}
+ private final CatalogMapper catalog; private final CatalogMasterService masters; private final NotificationCapture notifications; private final ShipmentReader shipments;
+ public PreorderOrderService(JdbcTemplate db,ObjectMapper json,ShoppingMapper shopping,CatalogMapper catalog,CatalogMasterService masters,NotificationCapture notifications,ShipmentReader shipments){this.db=db;this.json=json;this.shopping=shopping;this.catalog=catalog;this.masters=masters;this.notifications=notifications;this.shipments=shipments;}
  private ResponseStatusException fail(int code,String message){return new ResponseStatusException(HttpStatus.valueOf(code),message);}
  private void uuid(String id){try{if(!UUID.fromString(id).toString().equals(id))throw new IllegalArgumentException();}catch(Exception e){throw fail(400,"預購訂單 ID 不正確");}}
  private String encode(Object value){try{return json.writeValueAsString(value);}catch(Exception e){throw new IllegalStateException(e);}}
@@ -34,11 +34,12 @@ public class PreorderOrderService {
  private final RowMapper<View> rows=(r,n)->new View(r.getString("id"),r.getString("batch_id"),r.getString("batch_name"),r.getString("product_title"),r.getString("sku_label"),r.getInt("unit_price_twd"),r.getInt("quantity"),r.getLong("subtotal_twd"),r.getInt("shipping_twd"),r.getLong("subtotal_twd")+r.getInt("shipping_twd"),shipping(r.getString("shipping")),time(r,"deadline_at"),r.getObject("arrival_from",LocalDate.class),r.getObject("arrival_to",LocalDate.class),r.getString("status"),r.getInt("version"),time(r,"created_at"),time(r,"expires_at"),time(r,"closed_at"),time(r,"paid_at"),r.getString("arrival_status"),r.getString("fulfillment_status"),review(r.getString("id")),refund(r.getString("id")),new dev.jackteng.figura.dto.PreorderFulfillmentPayloads.Progress(r.getInt("allocated_quantity"),time(r,"allocated_at"),"MOCK",r.getString("tracking_number"),time(r,"shipped_at"),time(r,"delivered_at")),
   r.getString("payment_mode"),r.getLong("deposit_twd"),r.getLong("balance_twd"),r.getString("balance_status"),time(r,"balance_due_at"),time(r,"balance_paid_at"),
   payNow(r.getString("status"),r.getString("payment_mode"),r.getString("balance_status"),r.getLong("subtotal_twd")+r.getInt("shipping_twd"),r.getLong("deposit_twd"),r.getLong("balance_twd")),
-  notices(r.getString("batch_id"),time(r,"created_at")));
+  notices(r.getString("batch_id"),time(r,"created_at")),shipmentOf(r.getString("id")));
  /** 下一筆應付金額：待付款＝全額或訂金；已付訂金且待付尾款＝尾款；其餘 0。 */
  static long payNow(String status,String mode,String balance,long total,long deposit,long rest){if(status.equals("PENDING"))return mode.equals("DEPOSIT")?deposit:total;if(status.equals("PAID")&&mode.equals("DEPOSIT")&&balance.equals("DUE"))return rest;return 0;}
  /** 顧客可見的到貨時程異動：只列下單後的延期／調整，僅含對外說明與前後日期。 */
  private java.util.List<dev.jackteng.figura.dto.PreorderPayloads.ScheduleNotice> notices(String batch,OffsetDateTime since){return db.query("SELECT action,public_reason,arrival_from_before,arrival_to_before,arrival_from_after,arrival_to_after,created_at FROM preorder_schedule_event WHERE batch_id=? AND action IN ('DELAY','ADJUST') AND created_at>=? ORDER BY created_at,request_id",(r,n)->new dev.jackteng.figura.dto.PreorderPayloads.ScheduleNotice(r.getString(1),r.getString(2),r.getObject(3,LocalDate.class),r.getObject(4,LocalDate.class),r.getObject(5,LocalDate.class),r.getObject(6,LocalDate.class),time(r,"created_at")),batch,since.toLocalDateTime());}
+ private dev.jackteng.figura.dto.ShippingPayloads.Shipment shipmentOf(String id){return shipments.forOrder("PREORDER",id);}
  private View find(String customer,String id,boolean lock){uuid(id);var found=db.query("SELECT * FROM preorder_order WHERE customer_id=? AND id=?"+(lock?" FOR UPDATE":""),rows,customer,id);if(found.isEmpty())throw fail(404,"找不到預購訂單");return found.get(0);}
  @Transactional(readOnly=true) public View detail(String customer,String id){return find(customer,id,false);}
  public record Locked(View order,Map<String,Object> batch) {}
@@ -59,7 +60,9 @@ public class PreorderOrderService {
   notifications.enqueuePreorder(customer,order,"PREORDER_"+(action.equals("PLACE")?"PLACED":action.equals("CANCEL")?"CANCELLED":"EXPIRED"),event);
  }
  /** Placement: customer -> master guard -> product -> batch. Never acquires physical inventory. */
- @Transactional(isolation=Isolation.READ_COMMITTED) public Applied place(String customer,Place in){
+ @Transactional(isolation=Isolation.READ_COMMITTED) public Applied place(String customer,Place in){return place(customer,in,0);}
+ /** 統一結帳：運費記在這張預購單（出貨單的承運訂單）；訂金訂單的運費加在尾款。 */
+ @Transactional(isolation=Isolation.READ_COMMITTED) public Applied place(String customer,Place in,int shippingTwd){
   owner(customer,true);String fingerprint=hash(List.of("PLACE",in.batchId(),in.quantity(),in.addressId(),in.addressVersion(),in.expectedSubtotalTwd()));var old=replay(customer,in.requestId(),fingerprint);if(old!=null)return old;
   masters.lock();var reference=batch(in.batchId(),false);var product=catalog.lock((String)reference.get("product_id"));var b=batch(in.batchId(),true);
   if(!"OPEN".equals(b.get("status")))throw fail(409,"批次尚未開放或已截單");
@@ -73,8 +76,8 @@ public class PreorderOrderService {
   var shipping=new Shipping(address.getRecipientName(),address.getPhone(),address.getPostalCode(),address.getCity(),address.getDistrict(),address.getStreet());
   var expires=at.plusMinutes(30).isBefore(deadline)?at.plusMinutes(30):deadline;String id=UUID.randomUUID().toString();
   // 付款條件快照：批次開放後條件已固定；訂金訂單 PAID 只代表訂金
-  String mode=(String)b.get("payment_mode");long deposit=mode.equals("DEPOSIT")?(long)number(b,"deposit_twd")*quantity:0,rest=mode.equals("DEPOSIT")?subtotal-deposit:0;
-  db.update("INSERT INTO preorder_order(id,customer_id,batch_id,batch_name,product_title,sku_label,unit_price_twd,quantity,subtotal_twd,shipping,deadline_at,arrival_from,arrival_to,created_at,expires_at,payment_mode,deposit_twd,balance_twd,balance_status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",id,customer,in.batchId(),b.get("name"),b.get("product_title"),b.get("sku_label"),price,quantity,subtotal,encode(shipping),deadline,date(b,"arrival_from"),date(b,"arrival_to"),at,expires,mode,deposit,rest,mode.equals("DEPOSIT")?"NOT_DUE":"NONE");
+  String mode=(String)b.get("payment_mode");long deposit=mode.equals("DEPOSIT")?(long)number(b,"deposit_twd")*quantity:0,rest=mode.equals("DEPOSIT")?subtotal+shippingTwd-deposit:0;
+  db.update("INSERT INTO preorder_order(id,customer_id,batch_id,batch_name,product_title,sku_label,unit_price_twd,quantity,subtotal_twd,shipping_twd,shipping,deadline_at,arrival_from,arrival_to,created_at,expires_at,payment_mode,deposit_twd,balance_twd,balance_status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",id,customer,in.batchId(),b.get("name"),b.get("product_title"),b.get("sku_label"),price,quantity,subtotal,shippingTwd,encode(shipping),deadline,date(b,"arrival_from"),date(b,"arrival_to"),at,expires,mode,deposit,rest,mode.equals("DEPOSIT")?"NOT_DUE":"NONE");
   if(db.update("UPDATE preorder_batch SET held_quantity=held_quantity+?,version=version+1,updated_at=CURRENT_TIMESTAMP(6) WHERE id=? AND held_quantity+paid_quantity+?<=capacity",quantity,in.batchId(),quantity)!=1)throw fail(409,"批次配額已變更，請重新核對");
   var order=find(customer,id,false);append(customer,order,b,"PLACE",in.requestId(),fingerprint,"CUSTOMER",quantity);return new Applied(order,false);
  }
