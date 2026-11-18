@@ -169,6 +169,27 @@ class PreorderDepositIntegrationTest extends ShopIntegrationSupport {
         assertFalse(data(ok(c, "GET", "/customer/preorders/" + o.path("id").asText() + "/mock-payments", null, 200)).path("canStart").asBoolean());
     }
 
+    /** 尾款通知（顧客→批次→訂單）與付款（顧客→批次→訂單）同時進行：兩者都完成，沒有死鎖或 500。 */
+    @Test void balanceCallAndDepositPaymentRaceWithoutDeadlock() throws Exception {
+        var a = admin(); var f = fixture(a, 0, PRICE); var b = depositBatch(a, f);
+        var c = customer(); var d = customer();
+        pay(c, preorder(c, b, 1, PRICE)); var waiting = preorder(d, b, 1, PRICE); receive(a, b, 2);
+        var p = start(d, waiting); var body = balanceBody(batchNow(a, b), "到貨");
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(2); var gate = new java.util.concurrent.CountDownLatch(1);
+        try {
+            var x = pool.submit(() -> { gate.await(); return call(a, "POST", "/admin/preorders/" + b.path("id").asText() + "/balance-call", body).getResponse().getStatus(); });
+            var y = pool.submit(() -> { gate.await(); return call(d, "POST", "/customer/preorder-payments/" + p.path("id").asText() + "/simulate", Map.of("eventId", uuid(), "outcome", "SUCCESS")).getResponse().getStatus(); });
+            gate.countDown();
+            int called = x.get(30, java.util.concurrent.TimeUnit.SECONDS), payment = y.get(30, java.util.concurrent.TimeUnit.SECONDS);
+            assertEquals(200, payment); assertTrue(called == 201 || called == 409, "尾款通知可成功或因版本／名單變動要求重讀，不可 500：" + called);
+        } finally { pool.shutdownNow(); }
+        // 無論先後，兩筆已付訂金訂單最後都要進入待付尾款（後付訂金者自動跟進，或由重新通知涵蓋）
+        var now = batchNow(a, b);
+        if (now.path("balanceCalledAt").isNull()) ok(a, "POST", "/admin/preorders/" + b.path("id").asText() + "/balance-call", balanceBody(now, "到貨"), 201);
+        assertEquals("DUE", order(d, waiting).path("balanceStatus").asText());
+        assertEquals("DUE", data(ok(c, "GET", "/customer/preorders", null, 200)).path("items").get(0).path("balanceStatus").asText());
+    }
+
     @Test void termsValidationFullBatchesUnchangedAndQuoteSplitsPayNow() throws Exception {
         var a = admin(); var f = fixture(a, 0, PRICE);
         assertEquals(400, call(a, "POST", "/admin/preorders", batchBody(f, "DEPOSIT", PRICE, 7)).getResponse().getStatus(), "訂金需小於單價");

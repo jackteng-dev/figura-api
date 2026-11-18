@@ -57,7 +57,10 @@ public class PreorderBatchService {
         String mode=in.mode();Integer deposit=in.depositTwd(),days=in.balanceDays();
         if(mode.equals("FULL")&&(deposit!=null||days!=null))throw fail(400,"全額付款批次不可設定訂金或尾款天數");
         if(mode.equals("DEPOSIT")&&(deposit==null||days==null||deposit>=in.priceTwd()))throw fail(400,"訂金批次需設定小於單價的每件訂金與尾款天數（1–60）");
-        String hash=fingerprint(Arrays.asList(in.productId(),in.skuId(),name,description,in.priceTwd(),in.capacity(),normalized,in.arrivalFrom(),in.arrivalTo(),in.expectedVersion(),note,mode,deposit,days));var retry=replay(in.requestId(),id,action,hash,actor);if(retry!=null)return retry;
+        // 沒送付款條件時沿用 V22 前的 fingerprint，升級前未確認的原操作仍可用原 requestId／原內容核對
+        var parts=new ArrayList<Object>(Arrays.asList(in.productId(),in.skuId(),name,description,in.priceTwd(),in.capacity(),normalized,in.arrivalFrom(),in.arrivalTo(),in.expectedVersion(),note));
+        if(in.paymentMode()!=null||deposit!=null||days!=null)parts.addAll(Arrays.asList(mode,deposit,days));
+        String hash=fingerprint(parts);var retry=replay(in.requestId(),id,action,hash,actor);if(retry!=null)return retry;
         var product=catalog.lock(in.productId());if(product==null)throw fail(404,"找不到商品");if("ARCHIVED".equals(product.getStatus()))throw fail(409,"封存商品不能建立或編輯預購批次");
         var sku=catalog.skus(product.getId()).stream().filter(s->s.getId().equals(in.skuId())).findFirst().orElseThrow(()->fail(409,"SKU 不屬於此商品"));if(!sku.isEnabled())throw fail(409,"預購需要啟用的 SKU");
         Batch before=null;if(id==null){if(in.expectedVersion()!=0)throw fail(409,"新批次版本需為 0");id=UUID.randomUUID().toString();}else{before=find(id,true);version(before,in.expectedVersion());if(!before.status().equals("DRAFT"))throw fail(409,"只有草稿批次可編輯");if(!before.productId().equals(in.productId())||!before.skuId().equals(in.skuId()))throw fail(409,"批次商品與 SKU 不可更換，請建立新批次");}
@@ -82,43 +85,50 @@ public class PreorderBatchService {
         return append(id,action,hash,in.requestId(),note,actor,username,batch);
     }
 
-    // ---- Phase 4：時程與尾款。鎖序 actor/grant → master guard → batch → 依 ID 排序的訂單；不取 customer 鎖，
-    // 與付款／取消（customer → batch → order）同樣先 batch 後 order，不會反向等待。
+    // ---- Phase 4：時程與尾款。鎖序 actor/grant → 受影響顧客（依 ID）→ batch → 依 ID 排序的訂單。
+    // 付款／取消／退款都是 customer → batch → order，下單是 customer → master → product → batch；
+    // outbox 的 recipient 外鍵會對 customer 取共享鎖，所以顧客必須在 batch 之前先鎖，且這裡不取 master guard（避免與下單反向）。
+    private String authorizeOnly(CustomUserDetails actor,String permission){String username=actor==null?null:auth.lockActor(actor.getId());if(username==null||auth.lockPermission(actor.getId(),permission).isEmpty())throw fail(403,"員工或預購授權已失效");return username;}
+    private Set<String> lockCustomers(String batch,String where){var ids=db.queryForList("SELECT DISTINCT customer_id FROM preorder_order WHERE batch_id=? AND "+where+" ORDER BY customer_id",String.class,batch);for(var id:ids)db.queryForList("SELECT id FROM customer WHERE id=? FOR UPDATE",String.class,id);return new HashSet<>(ids);}
+    private void covered(List<Target> targets,Set<String> locked){if(targets.stream().anyMatch(t->!locked.contains(t.customer())))throw fail(409,"批次訂單剛有變動，請重讀後再操作");}
     private ScheduleApplied scheduleReplay(String request,String id,String action,String hash,CustomUserDetails actor){var old=db.query("SELECT * FROM preorder_schedule_event WHERE request_id=?",schedules,request);if(old.isEmpty())return null;var e=old.get(0);if(e.actorId()!=actor.getId()||!e.batchId().equals(id)||!e.action().equals(action)&&!(Set.of("DELAY","ADJUST").contains(e.action())&&action.equals("SCHEDULE"))||!e.fingerprint().equals(hash))throw fail(409,"requestId 已用於不同預購操作");return new ScheduleApplied(e,find(id,false),true);}
     private record Target(String id,String customer) {}
     private List<Target> lockOrders(String batch,String where){return db.query("SELECT id,customer_id FROM preorder_order WHERE batch_id=? AND "+where+" ORDER BY id FOR UPDATE",(r,n)->new Target(r.getString(1),r.getString(2)),batch);}
     private String source(String request,String order){return UUID.nameUUIDFromBytes((request+"|"+order).getBytes(StandardCharsets.UTF_8)).toString();}
     private ScheduleApplied record(String request,Batch before,String action,String hash,String reason,String note,LocalDateTime due,int affected,CustomUserDetails actor,String username){
         var after=find(before.id(),false);
-        db.update("INSERT INTO preorder_schedule_event(request_id,batch_id,actor_id,actor_username,action,fingerprint,public_reason,note,arrival_from_before,arrival_to_before,arrival_from_after,arrival_to_after,balance_due_at,affected_orders,batch_version_before,batch_version_after) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",request,before.id(),actor.getId(),username,action,hash,reason,note,before.arrivalFrom(),before.arrivalTo(),after.arrivalFrom(),after.arrivalTo(),due,affected,before.version(),after.version());
+        try{db.update("INSERT INTO preorder_schedule_event(request_id,batch_id,actor_id,actor_username,action,fingerprint,public_reason,note,arrival_from_before,arrival_to_before,arrival_from_after,arrival_to_after,balance_due_at,affected_orders,batch_version_before,batch_version_after) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",request,before.id(),actor.getId(),username,action,hash,reason,note,before.arrivalFrom(),before.arrivalTo(),after.arrivalFrom(),after.arrivalTo(),due,affected,before.version(),after.version());}
+        catch(org.springframework.dao.DuplicateKeyException e){throw fail(409,"requestId 已用於其他預購操作，請重讀核對");}
         return new ScheduleApplied(db.queryForObject("SELECT * FROM preorder_schedule_event WHERE request_id=?",schedules,request),after,false);
     }
     /** 延期或調整預估到貨：更新批次與尚未到貨的未結束訂單，保留前後紀錄並通知受影響顧客。 */
     @Transactional(isolation=Isolation.READ_COMMITTED) public ScheduleApplied schedule(String id,Schedule in,CustomUserDetails actor){
-        uuid(id);String username=authorize(actor,"preorders.schedule"),reason=in.publicReason().trim(),note=in.note().trim();if(reason.isBlank()||note.isBlank())throw fail(400,"顧客說明與內部原因不可空白");
+        uuid(id);String username=authorizeOnly(actor,"preorders.schedule"),reason=in.publicReason().trim(),note=in.note().trim();if(reason.isBlank()||note.isBlank())throw fail(400,"顧客說明與內部原因不可空白");
         String hash=fingerprint(List.of("SCHEDULE",id,in.expectedVersion(),in.arrivalFrom(),in.arrivalTo(),reason,note));var retry=scheduleReplay(in.requestId(),id,"SCHEDULE",hash,actor);if(retry!=null)return retry;
+        String open="status IN ('PENDING','PAID') AND arrival_status='NOT_ARRIVED'";var locked=lockCustomers(id,open);
         var batch=find(id,true);version(batch,in.expectedVersion());
         if(batch.status().equals("DRAFT"))throw fail(409,"草稿批次請直接編輯到貨區間");
         if(in.arrivalFrom().isAfter(in.arrivalTo())||in.arrivalTo().getYear()>2100||batch.deadlineAt().toLocalDate().isAfter(in.arrivalFrom()))throw fail(400,"到貨區間不正確，最早到貨不可早於截單日");
         if(in.arrivalFrom().equals(batch.arrivalFrom())&&in.arrivalTo().equals(batch.arrivalTo()))throw fail(409,"到貨區間沒有變更");
         String action=in.arrivalTo().isAfter(batch.arrivalTo())||in.arrivalFrom().isAfter(batch.arrivalFrom())?"DELAY":"ADJUST";
         db.update("UPDATE preorder_batch SET arrival_from=?,arrival_to=?,version=version+1,updated_at=CURRENT_TIMESTAMP(6) WHERE id=?",in.arrivalFrom(),in.arrivalTo(),id);
-        var targets=lockOrders(id,"status IN ('PENDING','PAID') AND arrival_status='NOT_ARRIVED'");
+        var targets=lockOrders(id,open);covered(targets,locked);
         for(var t:targets){db.update("UPDATE preorder_order SET arrival_from=?,arrival_to=?,version=version+1 WHERE id=?",in.arrivalFrom(),in.arrivalTo(),t.id());notifications.enqueuePreorder(t.customer(),orders.detail(t.customer(),t.id()),action.equals("DELAY")?"PREORDER_DELAYED":"PREORDER_RESCHEDULED",source(in.requestId(),t.id()));}
         return record(in.requestId(),batch,action,hash,reason,note,null,targets.size(),actor,username);
     }
     /** 到貨後通知訂金訂單付尾款：已付訂金、尚未通知的訂單改為待付尾款並設期限，之後付訂金的訂單自動跟進。 */
     @Transactional(isolation=Isolation.READ_COMMITTED) public ScheduleApplied balanceCall(String id,BalanceCall in,CustomUserDetails actor){
-        uuid(id);String username=authorize(actor,"preorders.balance.call"),reason=in.publicReason().trim(),note=in.note().trim();if(reason.isBlank()||note.isBlank())throw fail(400,"顧客說明與內部原因不可空白");
+        uuid(id);String username=authorizeOnly(actor,"preorders.balance.call"),reason=in.publicReason().trim(),note=in.note().trim();if(reason.isBlank()||note.isBlank())throw fail(400,"顧客說明與內部原因不可空白");
         String hash=fingerprint(List.of("BALANCE_CALL",id,in.expectedVersion(),reason,note));var retry=scheduleReplay(in.requestId(),id,"BALANCE_CALL",hash,actor);if(retry!=null)return retry;
+        String due="status='PAID' AND payment_mode='DEPOSIT' AND balance_status='NOT_DUE'";var locked=lockCustomers(id,due);
         var batch=find(id,true);version(batch,in.expectedVersion());
         if(!"DEPOSIT".equals(batch.paymentMode()))throw fail(409,"只有訂金批次需要通知尾款");
         if(batch.receivedQuantity()<1)throw fail(409,"批次登記到貨後才能通知尾款");
-        var due=now().plusDays(batch.balanceDays());
-        var targets=lockOrders(id,"status='PAID' AND payment_mode='DEPOSIT' AND balance_status='NOT_DUE'");
+        var dueAt=now().plusDays(batch.balanceDays());
+        var targets=lockOrders(id,due);covered(targets,locked);
         if(targets.isEmpty())throw fail(409,"沒有需要通知尾款的已付訂金訂單");
         db.update("UPDATE preorder_batch SET balance_called_at=COALESCE(balance_called_at,CURRENT_TIMESTAMP(6)),version=version+1,updated_at=CURRENT_TIMESTAMP(6) WHERE id=?",id);
-        for(var t:targets){db.update("UPDATE preorder_order SET balance_status='DUE',balance_due_at=?,version=version+1 WHERE id=?",due,t.id());notifications.enqueuePreorder(t.customer(),orders.detail(t.customer(),t.id()),"PREORDER_BALANCE_DUE",source(in.requestId(),t.id()));}
-        return record(in.requestId(),batch,"BALANCE_CALL",hash,reason,note,due,targets.size(),actor,username);
+        for(var t:targets){db.update("UPDATE preorder_order SET balance_status='DUE',balance_due_at=?,version=version+1 WHERE id=?",dueAt,t.id());notifications.enqueuePreorder(t.customer(),orders.detail(t.customer(),t.id()),"PREORDER_BALANCE_DUE",source(in.requestId(),t.id()));}
+        return record(in.requestId(),batch,"BALANCE_CALL",hash,reason,note,dueAt,targets.size(),actor,username);
     }
 }
