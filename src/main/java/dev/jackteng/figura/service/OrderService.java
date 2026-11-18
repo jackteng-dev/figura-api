@@ -16,41 +16,72 @@ public class OrderService {
  private final RefundMapper refunds;
  private final ReturnMapper returns;
  private final NotificationCapture notifications;
- public OrderService(OrderMapper orders,ShoppingMapper shopping,CatalogMapper catalog,RefundMapper refunds,ReturnMapper returns,NotificationCapture notifications){this.notifications=notifications;this.orders=orders;this.shopping=shopping;this.catalog=catalog;this.refunds=refunds;this.returns=returns;}
+ private final ShipmentReader shipments;
+ public OrderService(OrderMapper orders,ShoppingMapper shopping,CatalogMapper catalog,RefundMapper refunds,ReturnMapper returns,NotificationCapture notifications,ShipmentReader shipments){this.shipments=shipments;this.notifications=notifications;this.orders=orders;this.shopping=shopping;this.catalog=catalog;this.refunds=refunds;this.returns=returns;}
  private ResponseStatusException conflict(String message){return new ResponseStatusException(HttpStatus.CONFLICT,message);}
  private CustomerOrder require(CustomerOrder o){if(o==null)throw new ResponseStatusException(HttpStatus.NOT_FOUND,"找不到訂單");return o;}
  private void uuid(String id){try{if(!UUID.fromString(id).toString().equals(id))throw new IllegalArgumentException();}catch(IllegalArgumentException e){throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"訂單編號不正確");}}
- private View view(CustomerOrder o){var refund=refunds.orderRefund(o.getId());return new View(o.getId(),o.getStatus(),o.getVersion(),o.getSubtotalTwd(),o.getShippingTwd(),o.getSubtotalTwd()+o.getShippingTwd(),new Shipping(o.getRecipientName(),o.getPhone(),o.getPostalCode(),o.getCity(),o.getDistrict(),o.getStreet()),orders.lines(o.getId()).stream().map(l->new Line(l.getSkuId(),l.getProductId(),l.getTitle(),l.getLabel(),l.getQuantity(),l.getUnitPriceTwd(),(long)l.getQuantity()*l.getUnitPriceTwd())).toList(),o.getCreatedAt(),o.getExpiresAt(),o.getClosedAt(),o.getPaidAt(),new dev.jackteng.figura.dto.FulfillmentPayloads.Progress(o.getFulfillmentStatus(),"MOCK",o.getShipmentTrackingId(),o.getShippedAt(),o.getDeliveredAt()),refund==null?null:new dev.jackteng.figura.dto.RefundPayloads.Progress("REFUNDED","MOCK",refund.getAmountTwd(),refund.getCreatedAt()),dev.jackteng.figura.dto.ReturnPayloads.Progress.from(returns.find(o.getId())));}
+ private View view(CustomerOrder o){var refund=refunds.orderRefund(o.getId());return new View(o.getId(),o.getStatus(),o.getVersion(),o.getSubtotalTwd(),o.getShippingTwd(),o.getSubtotalTwd()+o.getShippingTwd(),new Shipping(o.getRecipientName(),o.getPhone(),o.getPostalCode(),o.getCity(),o.getDistrict(),o.getStreet()),orders.lines(o.getId()).stream().map(l->new Line(l.getSkuId(),l.getProductId(),l.getTitle(),l.getLabel(),l.getQuantity(),l.getUnitPriceTwd(),(long)l.getQuantity()*l.getUnitPriceTwd())).toList(),o.getCreatedAt(),o.getExpiresAt(),o.getClosedAt(),o.getPaidAt(),new dev.jackteng.figura.dto.FulfillmentPayloads.Progress(o.getFulfillmentStatus(),"MOCK",o.getShipmentTrackingId(),o.getShippedAt(),o.getDeliveredAt()),refund==null?null:new dev.jackteng.figura.dto.RefundPayloads.Progress("REFUNDED","MOCK",refund.getAmountTwd(),refund.getCreatedAt()),dev.jackteng.figura.dto.ReturnPayloads.Progress.from(returns.find(o.getId())),shipments.forOrder("STOCK",o.getId()));}
  @Transactional(readOnly=true) public View detail(String customer,String id){uuid(id);return view(require(orders.find(customer,id)));}
  @Transactional(readOnly=true) public Page<View> list(String customer,int page,int pageSize){if(page<1||page>100000||pageSize<1||pageSize>20)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"分頁範圍不正確");return new Page<>(orders.list(customer,pageSize,(page-1)*pageSize).stream().map(this::view).toList(),page,pageSize,orders.count(customer));}
+ /** 直接購買訂單的 cart_version 標記：購物車有品項時版本一定 ≥1，所以 0 只會是直接購買。 */
+ private static final int DIRECT=0;
+ public record Want(String productId,String skuId,int quantity){}
  @Transactional(isolation=Isolation.READ_COMMITTED) public Applied place(String customer,Place input){
   if(shopping.lockCustomer(customer)==null)throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"顧客登入狀態無效");
   var prior=orders.request(customer,input.requestId());
   if(prior!=null){
-   if(prior.getCartVersion()!=input.cartVersion()||!prior.getAddressId().equals(input.addressId())||prior.getAddressVersion()!=input.addressVersion()||prior.getSubtotalTwd()!=input.expectedSubtotalTwd())throw conflict("操作編號已用於不同內容，請核對訂單");
+   // 直接購買的操作編號不能從購物車入口重送（即使 cartVersion 也送 0）
+   if(prior.getCartVersion()==DIRECT||prior.getCartVersion()!=input.cartVersion()||!prior.getAddressId().equals(input.addressId())||prior.getAddressVersion()!=input.addressVersion()||prior.getSubtotalTwd()!=input.expectedSubtotalTwd())throw conflict("操作編號已用於不同內容，請核對訂單");
    // Return current state; a cancelled/expired replay never creates a new reservation.
    expireLocked(prior);return new Applied(view(require(orders.find(customer,prior.getId()))),true);
   }
   var version=shopping.cartVersion(customer);if(version==null||version.intValue()!=input.cartVersion().intValue())throw conflict("購物車已變更，請重新核對");
-  var address=shopping.address(input.addressId());if(address==null||address.isDeleted()||!address.getCustomerId().equals(customer))throw new ResponseStatusException(HttpStatus.NOT_FOUND,"找不到本人收件地址");
-  if(address.getVersion()!=input.addressVersion())throw conflict("地址已變更，請重新核對");
   var cart=shopping.items(customer);if(cart.isEmpty())throw conflict("購物車是空的");
+  return create(customer,input.requestId(),input.cartVersion(),input.addressId(),input.addressVersion(),input.expectedSubtotalTwd(),cart.stream().map(i->new Want(i.getProductId(),i.getSkuId(),i.getQuantity())).toList(),true,0);
+ }
+ /** 直接購買：只下這一款，不讀取也不清空購物車；鎖順序、保留庫存、30 分鐘期限與購物車結帳相同。 */
+ @Transactional(isolation=Isolation.READ_COMMITTED) public Applied placeDirect(String customer,DirectPlace input){
+  if(shopping.lockCustomer(customer)==null)throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"顧客登入狀態無效");
+  var prior=orders.request(customer,input.requestId());
+  if(prior!=null){
+   var lines=orders.lines(prior.getId());
+   if(prior.getCartVersion()!=DIRECT||lines.size()!=1||!lines.get(0).getSkuId().equals(input.skuId())||!lines.get(0).getProductId().equals(input.productId())||lines.get(0).getQuantity()!=input.quantity()
+     ||!prior.getAddressId().equals(input.addressId())||prior.getAddressVersion()!=input.addressVersion()||prior.getSubtotalTwd()!=input.expectedSubtotalTwd())throw conflict("操作編號已用於不同內容，請核對訂單");
+   expireLocked(prior);return new Applied(view(require(orders.find(customer,prior.getId()))),true);
+  }
+  return create(customer,input.requestId(),DIRECT,input.addressId(),input.addressVersion(),input.expectedSubtotalTwd(),List.of(new Want(input.productId(),input.skuId(),input.quantity())),false,0);
+ }
+ /** 統一結帳（CheckoutService）用：必須在既有交易內呼叫，與預購子單同一交易；呼叫端已核對整車版本並先鎖好顧客、主檔與商品。會清掉購物車的現貨品項。 */
+ @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+ public Applied createForCheckout(String customer,String requestId,int cartVersion,String addressId,int addressVersion,long expectedSubtotal,List<Want> wanted){
+  return create(customer,requestId,cartVersion,addressId,addressVersion,expectedSubtotal,wanted,true,0);
+ }
+ /** 統一結帳：運費記在這張現貨單上（出貨單的承運訂單），付款與退款金額都含運費。 */
+ @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+ public Applied createForCheckout(String customer,String requestId,int cartVersion,String addressId,int addressVersion,long expectedSubtotal,List<Want> wanted,int shippingTwd){
+  return create(customer,requestId,cartVersion,addressId,addressVersion,expectedSubtotal,wanted,true,shippingTwd);
+ }
+ private Applied create(String customer,String requestId,int cartVersion,String addressId,int addressVersion,long expectedSubtotal,List<Want> wanted,boolean fromCart,int shippingTwd){
+  var address=shopping.address(addressId);if(address==null||address.isDeleted()||!address.getCustomerId().equals(customer))throw new ResponseStatusException(HttpStatus.NOT_FOUND,"找不到本人收件地址");
+  if(address.getVersion()!=addressVersion)throw conflict("地址已變更，請重新核對");
   if(orders.pending(customer)>=20)throw conflict("待付款訂單已達 20 筆，請先取消或等待到期");
   // Global product ordering shared by reserve/release; every catalog/inventory writer locks product first.
   var products=new TreeMap<String,CatalogProduct>();var skus=new HashMap<String,CatalogSku>();
-  for(String id:cart.stream().map(CartItem::getProductId).distinct().sorted().toList()){
-   var product=catalog.lock(id);if(product==null||!"PUBLISHED".equals(product.getStatus()))throw conflict("商品已下架，請重新核對購物車");products.put(id,product);
+  for(String id:wanted.stream().map(Want::productId).distinct().sorted().toList()){
+   var product=catalog.lock(id);if(product==null||!"PUBLISHED".equals(product.getStatus()))throw conflict(fromCart?"商品已下架，請重新核對購物車":"商品已下架或不存在");products.put(id,product);
    catalog.lockSkus(id).forEach(s->skus.put(s.getId(),s));
   }
   long subtotal=0;var lines=new ArrayList<CustomerOrderLine>();String orderId=UUID.randomUUID().toString();
-  for(var item:cart){
-   var sku=skus.get(item.getSkuId());if(sku==null||!sku.isEnabled()||sku.getQuantity()<item.getQuantity())throw conflict("款式已停用或可用庫存不足，請重新核對");
-   var l=new CustomerOrderLine();l.setOrderId(orderId);l.setSkuId(sku.getId());l.setProductId(sku.getProductId());l.setTitle(products.get(sku.getProductId()).getTitle());l.setLabel(sku.getLabel());l.setQuantity(item.getQuantity());l.setUnitPriceTwd(sku.getPriceTwd());lines.add(l);subtotal+=(long)l.getQuantity()*l.getUnitPriceTwd();
+  for(var item:wanted){
+   var sku=skus.get(item.skuId());if(sku==null||!sku.getProductId().equals(item.productId())||!sku.isEnabled()||sku.getQuantity()<item.quantity())throw conflict("款式已停用或可用庫存不足，請重新核對");
+   var l=new CustomerOrderLine();l.setOrderId(orderId);l.setSkuId(sku.getId());l.setProductId(sku.getProductId());l.setTitle(products.get(sku.getProductId()).getTitle());l.setLabel(sku.getLabel());l.setQuantity(item.quantity());l.setUnitPriceTwd(sku.getPriceTwd());lines.add(l);subtotal+=(long)l.getQuantity()*l.getUnitPriceTwd();
   }
-  if(subtotal!=input.expectedSubtotalTwd())throw conflict("價格已變更，請重新核對金額後再下單");
-  var o=new CustomerOrder();o.setId(orderId);o.setCustomerId(customer);o.setRequestId(input.requestId());o.setCartVersion(input.cartVersion());o.setAddressId(address.getId());o.setAddressVersion(address.getVersion());o.setSubtotalTwd(subtotal);o.setRecipientName(address.getRecipientName());o.setPhone(address.getPhone());o.setPostalCode(address.getPostalCode());o.setCity(address.getCity());o.setDistrict(address.getDistrict());o.setStreet(address.getStreet());o.setExpiresAt(orders.now().plusMinutes(30));orders.insert(o);
+  if(subtotal!=expectedSubtotal)throw conflict("價格已變更，請重新核對金額後再下單");
+  var o=new CustomerOrder();o.setId(orderId);o.setCustomerId(customer);o.setRequestId(requestId);o.setCartVersion(cartVersion);o.setAddressId(address.getId());o.setAddressVersion(address.getVersion());o.setSubtotalTwd(subtotal);o.setRecipientName(address.getRecipientName());o.setPhone(address.getPhone());o.setPostalCode(address.getPostalCode());o.setCity(address.getCity());o.setDistrict(address.getDistrict());o.setStreet(address.getStreet());o.setExpiresAt(orders.now().plusMinutes(30));orders.insert(o);if(shippingTwd>0)orders.setShipping(orderId,shippingTwd);
   for(var l:lines){orders.insertLine(l);if(orders.reserve(l.getSkuId(),l.getQuantity())!=1)throw conflict("可用庫存不足，請重新核對");orders.event(orderId,l.getSkuId(),"RESERVE",l.getQuantity());}
-  orders.clearCart(customer);shopping.bumpCart(customer);notifications.enqueue(require(orders.find(customer,orderId)),"ORDER_PLACED",orderId);return new Applied(view(require(orders.find(customer,orderId))),false);
+  if(fromCart){orders.clearCart(customer);shopping.bumpCart(customer);}
+  notifications.enqueue(require(orders.find(customer,orderId)),"ORDER_PLACED",orderId);return new Applied(view(require(orders.find(customer,orderId))),false);
  }
  private void closeLocked(CustomerOrder o,String state){
   var lines=orders.lines(o.getId());for(String id:lines.stream().map(CustomerOrderLine::getProductId).distinct().sorted().toList()){catalog.lock(id);catalog.lockSkus(id);}
