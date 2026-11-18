@@ -41,13 +41,14 @@ class UnifiedCheckoutIntegrationTest extends ShopIntegrationSupport {
         var quote = data(ok(c, "GET", "/customer/checkout/quote", null, 200));
         assertEquals(3, quote.path("groups").size());
         assertEquals("STOCK", quote.path("groups").get(0).path("kind").asText());
-        assertEquals(5200, quote.path("totalTwd").asLong()); assertEquals(5200, quote.path("payNowTwd").asLong());
+        // 預設宅配分開寄（Phase 5）：現貨 1000、批次一 900 未達免運各收 120；批次二 3300 免運
+        assertEquals(5440, quote.path("totalTwd").asLong()); assertEquals(5440, quote.path("payNowTwd").asLong()); assertEquals(240, quote.path("shippingTwd").asLong());
         assertEquals(0, reserved(f)); assertEquals(0, held(b1)); // 預覽不保留
 
         var body = checkoutBody(c, address);
         var placed = data(ok(c, "POST", "/customer/checkout", body, 200));
         assertEquals(3, placed.path("orders").size()); assertFalse(placed.path("replayed").asBoolean());
-        assertEquals(5200, placed.path("totalTwd").asLong());
+        assertEquals(5440, placed.path("totalTwd").asLong());
         assertEquals(2, reserved(f)); assertEquals(1, held(b1)); assertEquals(3, held(b2));
         var after = cart(c);
         assertEquals(0, after.path("items").size()); assertEquals(0, after.path("preorders").size());
