@@ -44,6 +44,8 @@
 
 ## 2026-11-17：顧客手機＋Email＋密碼註冊、Email 驗證、忘記密碼（V19，含 schema 變更）
 
+> 歷史紀錄：本段提到的舊帳號名稱註冊／登入與 `demo_customer` 帳號名稱登入，已被上方「會員架構定案」取代（只剩手機＋Email）。
+
 分支 `feat/customer-email-phone`。**有 schema 變更（`src/main/resources/db/demo-migration/V19__…`，CD 受保護路徑），PR 不可直接 merge，需作者在伺服器端受控切換。** V1–V18 未改；V19 只新增可 NULL 欄位與新表，舊版程式可在新 schema 上運作。
 
 - **V19**：`customer` 新增 `email`（ASCII、小寫正規化、UNIQUE）、`phone`（09xxxxxxxx、UNIQUE）、`email_verified_at`；新表 `customer_email_token`（一次性連結，只存 SHA-256、用途 VERIFY／RESET、到期與使用時間）、`customer_mock_email`（模擬寄信）。不寫入任何資料列，不改權限資料。

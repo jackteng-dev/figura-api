@@ -65,10 +65,12 @@ class MobileIdentityIntegrationTest {
     @Test void ownerComesFromPrincipalAndProfileMassAssignmentRejected()throws Exception {
         String a=register(),b=register();var t=login(a,UUID.randomUUID().toString());String access=t.path("accessToken").asText();
         var other=login(b,UUID.randomUUID().toString());String id=other.path("customer").path("id").asText();
-        // 暱稱已移除：PATCH 不再開放，資料不變
-        String before=data(call("GET","/mobile/customer/me",access,null)).path("displayName").asText();
-        assertNotEquals(200,call("PATCH","/mobile/customer/me",access,Map.of("displayName","新名稱","id",id)).getResponse().getStatus());
-        assertEquals(before,data(call("GET","/mobile/customer/me",access,null)).path("displayName").asText());
+        // 暱稱已移除：PATCH 一律 403（路由不允許），本人資料不含舊欄位且 ID／Email／手機不變
+        var before=data(call("GET","/mobile/customer/me",access,null));
+        assertEquals(403,call("PATCH","/mobile/customer/me",access,Map.of("displayName","新名稱","id",id)).getResponse().getStatus());
+        var after=data(call("GET","/mobile/customer/me",access,null));
+        assertTrue(after.path("username").isMissingNode()&&after.path("displayName").isMissingNode());
+        assertEquals(before.path("id").asText(),after.path("id").asText());assertEquals(before.path("email").asText(),after.path("email").asText());assertEquals(before.path("phone").asText(),after.path("phone").asText());
         assertEquals(id,data(call("GET","/mobile/customer/me",other.path("accessToken").asText(),null)).path("id").asText());
     }
     @Test void refreshRaceOneWinnerOldAccessAndRefreshStayRevoked()throws Exception {
