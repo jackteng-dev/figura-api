@@ -9,6 +9,7 @@
 - 移除暱稱修改：`PATCH /customer/me`、`/mobile/customer/me` 與 `Profile` DTO、`updateOwnDisplayName`。`username`／`display_name` 欄位仍是資料庫必填，由系統產生、不對外使用；`View` 仍回傳兩欄（App 相容）。
 - 測試全面改為手機＋Email 註冊（`TestPhones`），身分測試改成驗證「舊格式被拒、帳號名稱不能登入」。完整測試僅剩既有 8 個失敗。
 - **HTTP smoke 腳本（2026-11-18 補）**：`scripts/smoke_*.py` 共 13 支原本仍用帳號名稱＋暱稱註冊、帳號名稱登入，在本分支會全部失敗（CI 只跑 Maven 測試，沒有跑這些腳本，所以 CI 綠燈沒有發現）。已改成手機＋Email 註冊、Email 登入；`smoke_customer.py` 改驗「舊格式註冊 400、帳號名稱登入 401、修改暱稱 403、本人資料含 Email／手機」；`smoke_mobile.py` 產生的 App fixture `APP_TEST_USERNAME` 改為 Email。本機隔離 demo（feat/buy-now 建置）實跑：customer 23、mobile 19、shopping 28、orders 24、payments 23、preorders 30 項通過；`smoke_preorder_orders` 在「MOCK 通知派送」失敗，因本機 demo 設定未開 `MOCK_NOTIFICATIONS_ENABLED`（與既有 NotificationIntegrationTest 失敗同源），註冊／登入步驟已通過。
+- **沙盒示範帳號（上線前必做，伺服器端）**：每日重置建立的 `demo_customer` 沒有 Email／手機，本分支上線後**無法登入**，而且會被舊帳號清理腳本視為舊帳號刪除。重置種子需在本分支部署前改成同時寫入 `email='demo-customer@example.com'`（`example.com` 為保留網域；手機可留空），README 已改用此 Email 說明。種子在本 repo 之外，未修改。員工示範帳號 `shop_admin`／`shop_staff` 不受影響。
 - **Flutter App 相容**：App 需同時更新（figura-app `feat/contact-only-login`）：註冊改手機＋Email、登入接受 Email、移除修改暱稱。舊版 App 在本分支上線後：登入用手機可以（舊版欄位驗證擋 Email）、註冊與修改暱稱會失敗。
 - **舊帳號刪除**：本機 demo DB 已刪 3 個舊帳號（無訂單）。正式環境需由伺服器端在部署之間執行 `work/cleanup-legacy-customers.sql`（不進 Git；先備份；單一交易；會釋放待付款保留庫存與預購配額，再由子表到父表刪除；最後檢查查詢須全 0）。已在隔離測試 DB 以 ROLLBACK 演練 273 個舊帳號／215 訂單／67 預購，約束與庫存／配額計數全部一致。執行後另刪 Redis `shop:customer:session:<id>:*`、`shop:customer:mobile:session:<id>:*`。
 
@@ -37,7 +38,7 @@
 - **回應欄位**：`CustomerPayloads.View` 新增 `email`、`phone`、`emailVerified`（舊帳號為 null／false）。
 - **測試**：新增 `CustomerEmailPhoneIntegrationTest`（7 項：正規化與重複、並發同 Email、Email／手機登入與一致失敗訊息、驗證一次性與重寄節流、忘記／重設與撤銷登入、忘記密碼節流、模擬信件僅員工可讀）。`CustomerIdentityIntegrationTest` 回應欄位斷言更新；7 個測試的 Flyway 版本數 18→19。
 - **驗證結果**：隔離全新 DB（獨立 compose project、不同 port，測後刪除）`SHOP_MYSQL_INTEGRATION=true mvn package`：271 項，新增與顧客相關全部通過；**8 項失敗為既有問題**（`NotificationIntegrationTest` 7 項、`PreorderOrderIntegrationTest.notificationSafeSnapshots…` 1 項，mock 派送回 404），已在未修改的 main 上以同一環境重現相同 8 項，與本次無關，未修。本機 V19 套用成功，瀏覽器端到端：註冊、重複 Email／手機、手機登入、模擬驗證信與連結一次性、忘記密碼（不存在信箱不寫信）、重設後舊登入失效與新密碼登入。
-- **伺服器端需要**：受控切換套用 V19；沙盒／正式站若要展示驗證信與重設密碼，需在私有環境設 `MOCK_EMAIL_ENABLED=true`；沙盒每日重置的 `demo_customer` 可維持帳號名稱登入。
+- **伺服器端需要**：受控切換套用 V19；沙盒／正式站若要展示驗證信與重設密碼，需在私有環境設 `MOCK_EMAIL_ENABLED=true`；沙盒每日重置的 `demo_customer` 可維持帳號名稱登入（**2026-11-18 更正**：contact-only-login 上線後帳號名稱不能登入，每日重置種子必須替 `demo_customer` 設定 Email `demo-customer@example.com`，見最上方段落）。
 - **未完成**：Facebook／LINE 登入（前端按鈕先顯示、無動作，待作者申請金鑰）；真實寄信服務；`NotificationIntegrationTest` 既有失敗。
 - **Codex 審查後修正（同日）**：
   - 登入與重設密碼競爭：網站／App 登入寫入 session 後重讀密碼雜湊，已變更即撤回該 session 並 401。
