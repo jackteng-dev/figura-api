@@ -1,6 +1,20 @@
 # Figura（原 ELPSY Shop） 後端交接
 
 
+## 2026-11-18：Phase 4 預購訂金／尾款、延期與通知（V22，含 schema 變更）
+
+分支 `feat/preorder-deposit`（疊在 `feat/unified-cart` 上）。**新增 `V22__preorder_deposits_and_schedule.sql`（受保護路徑），合併前需作者受控切換**；需先完成 V21。V1–V21 未改。
+
+- **V22**：`preorder_batch` 加 `payment_mode`（FULL／DEPOSIT）、`deposit_twd`（每件訂金，需小於單價）、`balance_days`（1–60）、`balance_called_at`；`preorder_order` 加付款條件快照（`deposit_twd`、`balance_twd`、`balance_status` NONE／NOT_DUE／DUE／PAID、`balance_due_at`、`balance_paid_at`），CHECK 保證訂金＋尾款＝總額；`preorder_mock_payment.stage`（FULL／DEPOSIT／BALANCE）；新表 `preorder_schedule_event`（延期／調整／尾款通知的不可變稽核，`public_reason` 給顧客、`note` 只給員工）；權限 256 `preorders.schedule`、257 `preorders.balance.call`（只給管理員角色）。既有資料經預設值成為 FULL，原付款／退款紀錄不動。
+- **付款**：訂單 `status=PAID` 對訂金訂單代表「訂金已付、名額已確保」（held→paid 只發生一次）；尾款另由 `balance_status` 追蹤，尾款付款不動名額。付款金額一律由伺服器決定（`payNowTwd`）。晚到／重複通知：尾款付款遇到已退款或非待付尾款 → REVIEW_REQUIRED（保留證據、不復活）。
+- **尾款通知**：`POST /admin/preorders/{id}/balance-call`（需先登記到貨）把已付訂金、未通知的訂單改為 DUE，期限＝現在＋`balance_days`，並排入 `PREORDER_BALANCE_DUE` 通知；之後才付訂金的訂單自動進入 DUE。逾期不自動沒收或取消（正式政策待作者核定），訂單中心把待付尾款列在「待付款」。
+- **延期／調整**：`POST /admin/preorders/{id}/schedule` 更新批次與尚未到貨、未結束訂單的預計到貨區間，記錄前後日期與顧客說明，通知 `PREORDER_DELAYED`（延後）或 `PREORDER_RESCHEDULED`（提前／調整）。顧客訂單 `schedule` 只列下單後的異動、只含對外說明。
+- **鎖序**：時程／尾款通知為 actor/grant → 受影響顧客（依 ID）→ batch → 訂單（依 ID），不取 master guard；與下單（customer → master → product → batch）、付款／取消／退款（customer → batch → order）一致，避免 outbox 外鍵造成的 customer 鎖反向等待。名單在鎖批次後若出現未鎖的顧客，回 409 要求重讀。
+- **分配與退款**：訂金訂單需尾款已付才可分配到貨；整筆退款（未到貨）會對每一筆成功付款各寫一筆退款稽核（訂金、尾款），訂單版本依筆數遞增，顧客看到退款合計。
+- **相容**：批次寫入未送付款條件時 fingerprint 與 V22 前相同（升級前未確認的原操作仍可原 requestId 核對）。統一結帳報價依批次條件回 `payNowTwd`／`payLaterTwd`。
+- 測試：`PreorderDepositIntegrationTest` 5 項（訂金→到貨→尾款通知→尾款→分配、後付訂金自動待付尾款、延期／調整紀錄與通知且不洩漏內部說明、只付訂金退款與訂金＋尾款兩筆退款、條件驗證與全額不變、統一結帳報價、尾款通知與付款並發無死鎖）。全套 `mvn test`：308＋1 項，只剩既有 8 項本機通知失敗。本機瀏覽器實測（隔離 DB）：商品頁顯示付款方式、結帳顯示先付訂金／之後尾款、付訂金、延期紀錄、尾款通知後訂單中心顯示待付尾款、付尾款。
+- 未完成／待確認：尾款逾期處理政策（目前只顯示期限）、部分到貨或部分退款仍不支援；員工後台頁面未在瀏覽器實際操作（登入員工帳號被本機權限設定擋下），以 API 測試與型別檢查涵蓋。
+
 ## 2026-11-18：Phase 3 統一購物車與結帳（V21，含 schema 變更）
 
 分支 `feat/unified-cart`（疊在 `feat/order-center` 上）。**新增 `V21__unified_cart_and_checkout_groups.sql`，屬受保護路徑 `src/main/resources/`：合併前需作者在伺服器端做受控切換（contract switch）**；V1–V20 未改。
