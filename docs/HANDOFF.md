@@ -1,5 +1,14 @@
 # Figura（原 ELPSY Shop） 後端交接
 
+## 2026-11-18：Phase 2 統一訂單中心（唯讀 API）
+
+分支 `feat/order-center`（疊在 `feat/buy-now` 上）。**無 schema、未改受保護路徑**。
+
+- `GET /customer/order-center`、`/mobile/customer/order-center`（網站 Cookie 與 App Bearer 共用路由允許清單），參數 `kind=ALL|STOCK|PREORDER`、`stage=ALL|PENDING_PAYMENT|WAITING_ARRIVAL|TO_SHIP|SHIPPED|COMPLETED|RETURNING|CANCELLED|REFUNDED|REVIEW`、`sort=NEWEST|OLDEST|AMOUNT_DESC|AMOUNT_ASC`、`page`、`pageSize≤50`；回傳摘要列表、`total`、各階段 `counts`。詳情與操作仍用原本 `/customer/orders/{id}`、`/customer/preorders/{id}`。
+- `OrderCenterService`：一個 `UNION ALL` 合併本人現貨與預購，在 DB 內篩選、排序、`LIMIT/OFFSET`，所以分頁與總數是跨兩種訂單的全域結果；現貨明細以本人範圍的彙總 join 取得。stage 由原始狀態推導、不改任何資料；**未處理的付款核對最優先**（取消／逾時後晚到的成功通知會出現在「付款待核對」）。owner 只取 Principal，參數用 enum 白名單。
+- 測試：新增共用 `ShopIntegrationSupport`（之後各階段共用）與 `OrderCenterIntegrationTest`（3 項：真實付款／出貨／取消／預購付款產生六種狀態，驗證 stage、篩選、金額與時間排序、跨類型分頁、counts、本人隔離、401／400、App Bearer 與 Cookie 隔離、取消後晚到付款進入核對）。
+- 待辦（非阻斷）：大量訂單時的 `EXPLAIN` 效能驗證；核對退款後回到原階段的整合測試。
+
 ## 2026-11-18：會員架構定案（正式電商方向）
 
 同分支 `feat/contact-only-login`，無 schema 變更、未改 `src/main/resources/`。作者決定不再保留練習版的暱稱、帳號名稱登入與舊註冊格式。
