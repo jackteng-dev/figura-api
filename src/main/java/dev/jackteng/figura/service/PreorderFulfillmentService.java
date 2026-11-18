@@ -24,7 +24,8 @@ import java.security.MessageDigest;
 public class PreorderFulfillmentService {
  private final JdbcTemplate db; private final ObjectMapper json; private final PreorderOrderService orders;
  private final FulfillmentMapper auth; private final NotificationCapture notifications; private final boolean mockEnabled;
- public PreorderFulfillmentService(JdbcTemplate db,ObjectMapper json,PreorderOrderService orders,FulfillmentMapper auth,NotificationCapture notifications,@Value("${shop.fulfillment.mock-enabled:false}") boolean mockEnabled){this.db=db;this.json=json;this.orders=orders;this.auth=auth;this.notifications=notifications;this.mockEnabled=mockEnabled;}
+ private final ShipmentReader shipments;
+ public PreorderFulfillmentService(JdbcTemplate db,ObjectMapper json,PreorderOrderService orders,FulfillmentMapper auth,NotificationCapture notifications,ShipmentReader shipments,@Value("${shop.fulfillment.mock-enabled:false}") boolean mockEnabled){this.shipments=shipments;this.db=db;this.json=json;this.orders=orders;this.auth=auth;this.notifications=notifications;this.mockEnabled=mockEnabled;}
  private ResponseStatusException fail(int code,String message){return new ResponseStatusException(HttpStatus.valueOf(code),message);}
  private void uuid(String id){try{if(!UUID.fromString(id).toString().equals(id))throw new IllegalArgumentException();}catch(Exception e){throw fail(400,"預購編號不正確");}}
  private String note(String note){var n=note.trim();if(n.isBlank())throw fail(400,"到貨／履約原因不可空白");return n;}
@@ -35,9 +36,9 @@ public class PreorderFulfillmentService {
  @Transactional(readOnly=true) public Page<Supply> list(int page,int size){if(page<1||page>100000||size<1||size>50)throw fail(400,"分頁參數不正確");return new Page<>(db.query("SELECT * FROM preorder_batch ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",supplies,size,(page-1)*size),page,size,db.queryForObject("SELECT COUNT(*) FROM preorder_batch",Long.class));}
  @Transactional(readOnly=true) public BatchDetail batchDetail(String id){return new BatchDetail(supply(id,false),db.query("SELECT * FROM preorder_fulfillment_event WHERE batch_id=? ORDER BY created_at,request_id",events,id));}
  private boolean paid(View o){return o.status().equals("PAID")&&!o.paymentReviewRequired();}
- private boolean allocatable(View o,Supply s){return paid(o)&&o.arrivalStatus().equals("NOT_ARRIVED")&&o.fulfillmentStatus().equals("UNFULFILLED")&&o.fulfillment().allocatedQuantity()==0&&s.unallocatedQuantity()>=o.quantity();}
- private boolean shippable(View o){return mockEnabled&&paid(o)&&o.arrivalStatus().equals("ARRIVED")&&o.fulfillment().allocatedQuantity()==o.quantity()&&o.fulfillmentStatus().equals("UNFULFILLED");}
- private boolean deliverable(View o){return mockEnabled&&paid(o)&&o.fulfillmentStatus().equals("SHIPPED");}
+ private boolean allocatable(View o,Supply s){return paid(o)&&(o.paymentMode().equals("FULL")||o.balanceStatus().equals("PAID"))&&o.arrivalStatus().equals("NOT_ARRIVED")&&o.fulfillmentStatus().equals("UNFULFILLED")&&o.fulfillment().allocatedQuantity()==0&&s.unallocatedQuantity()>=o.quantity();}
+ private boolean shippable(View o){return mockEnabled&&!shipments.combined("PREORDER",o.id())&&paid(o)&&o.arrivalStatus().equals("ARRIVED")&&o.fulfillment().allocatedQuantity()==o.quantity()&&o.fulfillmentStatus().equals("UNFULFILLED");}
+ private boolean deliverable(View o){return mockEnabled&&!shipments.combined("PREORDER",o.id())&&paid(o)&&o.fulfillmentStatus().equals("SHIPPED");}
  @Transactional(readOnly=true) public Detail detail(String id){var o=orders.staffDetail(id);return new Detail(supply(o.batchId(),false),mockEnabled,allocatable(o,supply(o.batchId(),false)),shippable(o),deliverable(o),db.query("SELECT * FROM preorder_fulfillment_event WHERE order_id=? ORDER BY created_at,request_id",events,id));}
  private String authorize(CustomUserDetails actor,String permission){String name=actor==null?null:auth.lockActor(actor.getId());if(name==null||auth.lockPermission(actor.getId(),permission).isEmpty())throw fail(403,"員工或預購到貨／履約授權已失效");return name;}
  private String hash(Object v){try{return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(json.writeValueAsBytes(v)));}catch(Exception e){throw new IllegalStateException(e);}}
@@ -64,7 +65,7 @@ public class PreorderFulfillmentService {
   String fingerprint=hash(Arrays.asList(action,id,expected,expectedBatch,note));var retry=replay(request,o.batchId(),id,action,fingerprint,actor);if(retry!=null)return new Applied(retry,o,detail(id),true);
   if(o.version()!=expected||(expectedBatch!=null&&before.version()!=expectedBatch))throw fail(409,"預購訂單或到貨批次版本已變更，請先重讀");
   if(action.equals("ALLOCATE")){
-   if(!allocatable(o,before))throw fail(409,"只可整筆分配給已付款、未分配且無待核對訂單，實際到貨數量須足夠");
+   if(!allocatable(o,before))throw fail(409,"只可整筆分配給已付清（訂金訂單需尾款已付）、未分配且無待核對訂單，實際到貨數量須足夠");
    db.update("UPDATE preorder_batch SET allocated_quantity=allocated_quantity+?,version=version+1,updated_at=CURRENT_TIMESTAMP(6) WHERE id=?",o.quantity(),o.batchId());
    db.update("UPDATE preorder_order SET allocated_quantity=quantity,allocated_at=CURRENT_TIMESTAMP(6),arrival_status='ARRIVED',version=version+1 WHERE id=?",id);
   }else if(action.equals("SHIP")){

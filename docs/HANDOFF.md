@@ -1,5 +1,43 @@
 # Figura（原 ELPSY Shop） 後端交接
 
+
+## 2026-11-18：Phase 5 配送：運費、宅配／超商、合併／分開出貨、出貨單（V23，含 schema 變更）
+
+分支 `feat/shipping`（疊在 `feat/preorder-deposit` 上）。**新增 `V23__shipping_methods_and_shipments.sql`（受保護路徑），合併前需作者受控切換**；需先完成 V21、V22。V1–V22 未改。
+
+- **V23**：放寬 `customer_order.ck_order_totals`／`preorder_order.ck_preorder_order_amount` 的 `shipping_twd=0` 為 0–100000（新 migration 改 CHECK，不改舊檔）；`shipping_method`（HOME 宅配到府、CVS 超商取貨；基本運費、免運門檻、開放與否、版本）＋`shipping_method_event` 稽核；`shipment`（目的地快照、運費、商品金額、測試物流 carrier=TEST、`MOCK-` 貨件號）、`shipment_item`（每張訂單只屬一張出貨單）、`shipment_event`（整張出貨／送達稽核）；`checkout_group` 記錄配送方式／策略／運費；權限 258–263（出貨單讀取／詳情／出貨／送達、運費讀取／修改；一般員工只有讀取）。**預設費率是測試值（宅配 120／滿 3000 免運、超商 60／滿 1500 免運），上線前需作者核定**。
+- **結帳**：`GET /customer/checkout/quote?shippingMethod=HOME|CVS&deliveryStrategy=SPLIT|COMBINED`；`GET /customer/checkout/pickup-stores`（5 間**測試門市**，不是真實超商資料）；`POST /customer/checkout` 新增 `shippingMethod`、`deliveryStrategy`、`pickupStoreId`（省略＝宅配分開寄；舊客戶端未含運費的金額會 409 要求重新核對，不會默默多收）。SPLIT 每組一張出貨單、各自計運費；COMBINED 全部一張出貨單、只算一次運費（記在現貨單，沒有現貨時記在第一張預購單）。運費依每個包裹的商品金額判斷免運，記在承運訂單的 `shipping_twd`，所以付款、退款金額自動含運費；訂金預購的運費加在尾款。直接購買、直接預購維持原行為（免運、沒有出貨單）。
+- **出貨單**：狀態由組成訂單推導（WAITING 付款／尾款／到貨／待核對、READY、SHIPPED、DELIVERED、CANCELLED），`/admin/shipments`、`/admin/shipments/{id}`、`POST .../ship`、`.../deliver`（需 `MOCK_FULFILLMENT_ENABLED`）整張出貨或送達，同時寫入每張訂單既有的履約紀錄、版本、批次出貨數與通知；同 requestId 重送回原結果、內容不同 409。合併出貨單內的訂單不能用舊的單筆出貨端點（避免一半寄出）；單一訂單的出貨單兩種端點都可用。訂單詳情（現貨、預購）附上 `shipment`。
+- **運費規則**：`GET/PUT /admin/shipping-methods/{code}`（版本、原因、稽核、同 requestId 重送）；停用的配送方式報價 `ready=false`、下單 409。
+- 鎖序：出貨單操作 actor/grant → 顧客 → 現貨訂單 → 預購批次（排序）→ 預購訂單（排序）→ 出貨單，與付款、單筆履約、時程／尾款通知一致。
+- 測試：`ShippingIntegrationTest` 4 項（各方式／策略運費與免運門檻、超商合併出貨等預購到貨後整張出貨與送達、分開寄各訂單運費與訂金尾款含運費、單筆出貨相容、舊客戶端金額、運費規則稽核／版本／權限／停用）。`UnifiedCheckoutIntegrationTest` 金額改為含預設運費。全套 `mvn test`：313 項，只剩既有 8 項本機通知失敗（測試 context 屬性順序與 Phase 4 測試一致以共用連線）。本機瀏覽器（隔離 DB）：結帳切換宅配／超商、分開／一起寄，運費 240／120／0 正確；超商合併下單 → 兩張付款 → 等預購到貨 → 到貨分配 → 整張出貨 → 訂單頁顯示測試貨件號、訂單中心兩張皆已出貨。
+- 未完成／待確認：真實物流／超商 API、真實門市選擇、運費正式費率、部分出貨與退貨寄回運費，都需實際服務與作者核定（見 CLOUD_LOCAL_FOLLOWUP）。員工後台頁面未在瀏覽器實際操作（員工登入被本機權限設定擋下），以 API 測試與型別檢查涵蓋。
+
+## 2026-11-18：Phase 4 預購訂金／尾款、延期與通知（V22，含 schema 變更）
+
+分支 `feat/preorder-deposit`（疊在 `feat/unified-cart` 上）。**新增 `V22__preorder_deposits_and_schedule.sql`（受保護路徑），合併前需作者受控切換**；需先完成 V21。V1–V21 未改。
+
+- **V22**：`preorder_batch` 加 `payment_mode`（FULL／DEPOSIT）、`deposit_twd`（每件訂金，需小於單價）、`balance_days`（1–60）、`balance_called_at`；`preorder_order` 加付款條件快照（`deposit_twd`、`balance_twd`、`balance_status` NONE／NOT_DUE／DUE／PAID、`balance_due_at`、`balance_paid_at`），CHECK 保證訂金＋尾款＝總額；`preorder_mock_payment.stage`（FULL／DEPOSIT／BALANCE）；新表 `preorder_schedule_event`（延期／調整／尾款通知的不可變稽核，`public_reason` 給顧客、`note` 只給員工）；權限 256 `preorders.schedule`、257 `preorders.balance.call`（只給管理員角色）。既有資料經預設值成為 FULL，原付款／退款紀錄不動。
+- **付款**：訂單 `status=PAID` 對訂金訂單代表「訂金已付、名額已確保」（held→paid 只發生一次）；尾款另由 `balance_status` 追蹤，尾款付款不動名額。付款金額一律由伺服器決定（`payNowTwd`）。晚到／重複通知：尾款付款遇到已退款或非待付尾款 → REVIEW_REQUIRED（保留證據、不復活）。
+- **尾款通知**：`POST /admin/preorders/{id}/balance-call`（需先登記到貨）把已付訂金、未通知的訂單改為 DUE，期限＝現在＋`balance_days`，並排入 `PREORDER_BALANCE_DUE` 通知；之後才付訂金的訂單自動進入 DUE。逾期不自動沒收或取消（正式政策待作者核定），訂單中心把待付尾款列在「待付款」。
+- **延期／調整**：`POST /admin/preorders/{id}/schedule` 更新批次與尚未到貨、未結束訂單的預計到貨區間，記錄前後日期與顧客說明，通知 `PREORDER_DELAYED`（延後）或 `PREORDER_RESCHEDULED`（提前／調整）。顧客訂單 `schedule` 只列下單後的異動、只含對外說明。
+- **鎖序**：時程／尾款通知為 actor/grant → 受影響顧客（依 ID）→ batch → 訂單（依 ID），不取 master guard；與下單（customer → master → product → batch）、付款／取消／退款（customer → batch → order）一致，避免 outbox 外鍵造成的 customer 鎖反向等待。名單在鎖批次後若出現未鎖的顧客，回 409 要求重讀。
+- **分配與退款**：訂金訂單需尾款已付才可分配到貨；整筆退款（未到貨）會對每一筆成功付款各寫一筆退款稽核（訂金、尾款），訂單版本依筆數遞增，顧客看到退款合計。
+- **相容**：批次寫入未送付款條件時 fingerprint 與 V22 前相同（升級前未確認的原操作仍可原 requestId 核對）。統一結帳報價依批次條件回 `payNowTwd`／`payLaterTwd`。
+- 測試：`PreorderDepositIntegrationTest` 5 項（訂金→到貨→尾款通知→尾款→分配、後付訂金自動待付尾款、延期／調整紀錄與通知且不洩漏內部說明、只付訂金退款與訂金＋尾款兩筆退款、條件驗證與全額不變、統一結帳報價、尾款通知與付款並發無死鎖）。全套 `mvn test`：308＋1 項，只剩既有 8 項本機通知失敗。本機瀏覽器實測（隔離 DB）：商品頁顯示付款方式、結帳顯示先付訂金／之後尾款、付訂金、延期紀錄、尾款通知後訂單中心顯示待付尾款、付尾款。
+- 未完成／待確認：尾款逾期處理政策（目前只顯示期限）、部分到貨或部分退款仍不支援；員工後台頁面未在瀏覽器實際操作（登入員工帳號被本機權限設定擋下），以 API 測試與型別檢查涵蓋。
+
+## 2026-11-18：Phase 3 統一購物車與結帳（V21，含 schema 變更）
+
+分支 `feat/unified-cart`（疊在 `feat/order-center` 上）。**新增 `V21__unified_cart_and_checkout_groups.sql`，屬受保護路徑 `src/main/resources/`：合併前需作者在伺服器端做受控切換（contract switch）**；V1–V20 未改。
+
+- **V21**：`customer_cart_preorder`（本人購物車的預購項目，以批次為鍵、1–100 件，FK 到購物車與批次）；`checkout_group`（一次結帳，`UNIQUE(customer_id,request_id)`＋內容 fingerprint）；`checkout_group_order`（每張子單一列，現貨／預購恰一，訂單 ID 唯一）。只新增表，不改既有欄位。
+- **購物車**：`PUT/DELETE /customer/cart/preorders/{batchId}`（及 `/mobile/...`），核對整車版本；批次需 OPEN、未截止、商品上架且 SKU 啟用、數量 ≤ 可用配額；**不保留配額**。現貨＋預購合計最多 50 個品項。`CartView` 新增 `preorders`、`preorderSubtotalTwd`、`totalTwd`、`checkoutReady`（原 `items`／`subtotalTwd`／`ready` 只計現貨，舊客戶端相容）。
+- **結帳**：`GET /customer/checkout/quote` 回伺服器分組（現貨一組；每個預購批次一組，含到貨區間／月份、截單、payNow／payLater）；`POST /customer/checkout`（`requestId`、`cartVersion`、`addressId`、`addressVersion`、`expectedTotalTwd`）**單一交易**：customer 鎖 → master guard → 依 ID 排序鎖商品 → 重讀購物車核對總額 → 建立現貨子單（重用 `OrderService.createForCheckout`，MANDATORY）→ 依批次 ID 排序建立預購子單（重用 `PreorderOrderService.place`）→ 清空購物車（現貨與預購）→ 版本＋1。任何一張失敗（配額不足、價格變動、版本不符）**全部回滾**，購物車保留。子單 requestId 由主 requestId 決定性衍生；同 requestId 同內容重送回目前狀態（`replayed=true`）且不再保留，不同內容 409。
+- **相容**：舊 `POST /customer/orders`（購物車只結現貨）照舊運作，且不動預購項目；`/orders/direct`（直接購買）、`/preorders`（直接預購）不變。
+- 測試：`UnifiedCheckoutIntegrationTest` 6 項（混合拆單與冪等、任一預購失敗連現貨一起回滾、價格／版本／欄位／他人地址／未登入、批次狀態與配額與版本、舊端點相容、並發搶最後配額只有一方成功與純預購購物車）。各 Flyway 筆數斷言改為比對 classpath 上的 migration 檔數（之後新增 migration 不必再改測試）。隔離 DB 全套 `mvn test`：304 項，失敗只剩既有 8 項通知相關（本機 `MOCK_NOTIFICATIONS_ENABLED` 與非空 DB；CI 用全新 DB）。本機 demo 啟動自動套用 V21；網站與 App 實機下單（混合 3 張、純預購 1 張）通過。
+- 待辦（非阻斷）：舊會員清理包（`work/cleanup-20261118/`）如需再執行，要納入 `checkout_group*` 與 `customer_cart_preorder`。
+
 ## 2026-11-18：Phase 2 統一訂單中心（唯讀 API）
 
 分支 `feat/order-center`（疊在 `feat/buy-now` 上）。**無 schema、未改受保護路徑**。

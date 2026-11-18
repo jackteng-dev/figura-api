@@ -32,7 +32,8 @@ public class OrderCenterService {
                COALESCE(a.line_count,0) line_count, COALESCE(a.quantity,0) quantity, fl.title, fl.product_id,
                EXISTS(SELECT 1 FROM mock_payment p WHERE p.order_id=o.id AND p.status='REVIEW_REQUIRED'
                       AND NOT EXISTS(SELECT 1 FROM mock_refund_event r WHERE r.payment_id=p.id AND r.action='REVIEW_REFUND')) review,
-               EXISTS(SELECT 1 FROM mock_order_return t WHERE t.order_id=o.id AND t.status IN ('REQUESTED','RECEIVED')) returning
+               EXISTS(SELECT 1 FROM mock_order_return t WHERE t.order_id=o.id AND t.status IN ('REQUESTED','RECEIVED')) returning,
+               NULL balance_status, NULL balance_due_at
           FROM customer_order o
           LEFT JOIN (SELECT l.order_id, COUNT(*) line_count, SUM(l.quantity) quantity, MIN(CONCAT(l.product_id,'|',l.sku_id)) first_key
                        FROM customer_order_line l JOIN customer_order lo ON lo.id=l.order_id AND lo.customer_id=:customer
@@ -45,7 +46,7 @@ public class OrderCenterService {
                1, p.quantity, p.product_title, b.product_id,
                EXISTS(SELECT 1 FROM preorder_mock_payment m LEFT JOIN preorder_refund_event f ON f.payment_id=m.id
                       WHERE m.order_id=p.id AND m.status='REVIEW_REQUIRED' AND f.request_id IS NULL),
-               FALSE
+               FALSE, p.balance_status, p.balance_due_at
           FROM preorder_order p LEFT JOIN preorder_batch b ON b.id=p.batch_id
          WHERE p.customer_id=:customer
         """;
@@ -57,6 +58,7 @@ public class OrderCenterService {
         SELECT u.*, CASE
             WHEN u.review THEN 'REVIEW'
             WHEN u.status IN ('PENDING_PAYMENT','PENDING') THEN 'PENDING_PAYMENT'
+            WHEN u.status='PAID' AND u.balance_status='DUE' THEN 'PENDING_PAYMENT'
             WHEN u.status IN ('CANCELLED','EXPIRED') THEN 'CANCELLED'
             WHEN u.status='REFUNDED' THEN 'REFUNDED'
             WHEN u.returning THEN 'RETURNING'
@@ -85,7 +87,8 @@ public class OrderCenterService {
                 r.getString("kind"), r.getString("id"), r.getString("stage"), r.getString("status"), time(r.getObject("created_at", LocalDateTime.class)),
                 r.getLong("total_twd"), r.getString("title"), r.getInt("line_count"), r.getInt("quantity"), r.getString("product_id"),
                 time(r.getObject("expires_at", LocalDateTime.class)), r.getObject("arrival_from", LocalDate.class), r.getObject("arrival_to", LocalDate.class),
-                r.getString("arrival_status"), r.getString("fulfillment_status"), r.getBoolean("review")));
+                r.getString("arrival_status"), r.getString("fulfillment_status"), r.getBoolean("review"),
+                r.getString("balance_status"), time(r.getObject("balance_due_at", LocalDateTime.class))));
         Map<String, Long> counts = new LinkedHashMap<>();
         for (Stage s : Stage.values()) if (s != Stage.ALL) counts.put(s.name(), 0L);
         db.query("SELECT s.stage, COUNT(*) n" + from + byKind + " GROUP BY s.stage", p, r -> { counts.put(r.getString("stage"), r.getLong("n")); });

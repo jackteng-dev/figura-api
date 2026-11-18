@@ -12,7 +12,20 @@ public final class ShoppingPayloads {
     }
     public record CartLine(String skuId,String productId,String title,String label,int quantity,
                            Integer unitPriceTwd,Long lineTotalTwd,String issue) {}
-    public record CartView(int version,List<CartLine> items,long subtotalTwd,boolean ready) {}
+    /** 購物車預購項目（以批次為鍵，同 SKU 不同批次分開）。issue：UNAVAILABLE／CLOSED／EXPIRED／INSUFFICIENT_QUOTA。 */
+    public record PreorderLine(String batchId,String productId,String skuId,String title,String batchName,String label,int quantity,
+                               int unitPriceTwd,long lineTotalTwd,java.time.OffsetDateTime deadlineAt,java.time.LocalDate arrivalFrom,
+                               java.time.LocalDate arrivalTo,int availableQuota,String issue,String paymentMode,Integer depositTwd) {}
+    /**
+     * items／subtotalTwd／ready 只計現貨（與舊版網站、App 相容，舊的 POST /customer/orders 仍只結帳現貨）。
+     * preorders、preorderSubtotalTwd、totalTwd、checkoutReady 是統一結帳用的新欄位。
+     */
+    public record CartView(int version,List<CartLine> items,long subtotalTwd,boolean ready,
+                           List<PreorderLine> preorders,long preorderSubtotalTwd,long totalTwd,boolean checkoutReady) {}
+    public record PreorderCartWrite(@NotNull @Min(0) Integer expectedVersion,
+                                    @NotNull @Min(1) @Max(100) Integer quantity) {
+        @JsonAnySetter public void unknown(String name,Object value){throw new IllegalArgumentException("不支援的欄位");}
+    }
     public record AddressWrite(@NotNull @Min(0) Integer expectedVersion,
             @NotBlank @Size(max=80) String recipientName,
             @NotBlank @Pattern(regexp="\\+?[0-9]{8,15}") String phone,
