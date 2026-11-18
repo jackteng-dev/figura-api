@@ -18,6 +18,9 @@ class ShipmentStatusTest {
         assertEquals("DELIVERED", s(m("REFUNDED", "DELIVERED", false, null, false, 120))[0]);
         assertEquals("SHIPPED", s(m("REFUNDED", "SHIPPED", false, null, false, 0), m("PAID", "SHIPPED", false, null, false, 0))[0]);
         assertEquals("CANCELLED", s(m("CANCELLED", "UNFULFILLED", false, null, false, 120))[0], "出貨前就結束才是取消");
+        // 合併出貨後現貨退貨退款、其餘已送達：整張已送達（不會卡在已出貨）
+        assertEquals("DELIVERED", s(m("REFUNDED", "SHIPPED", false, null, false, 120), m("PAID", "DELIVERED", false, null, false, 0))[0]);
+        assertEquals("SHIPPED", s(m("REFUNDED", "SHIPPED", false, null, false, 0))[0], "只剩出貨後退款的訂單：保留已出貨歷史");
     }
     @Test void carrierClosedBeforeShippingWaitsForFeeDecision() {
         var carrier = m("CANCELLED", "UNFULFILLED", false, null, false, 120); var rest = m("PAID", "UNFULFILLED", true, null, false, 0);

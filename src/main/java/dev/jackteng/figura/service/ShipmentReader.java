@@ -81,7 +81,10 @@ public class ShipmentReader {
     static String[] status(List<Member> members) {
         var relevant = members.stream().filter(m -> !(m.closed() && "UNFULFILLED".equals(m.fulfillment()))).toList();
         if (relevant.isEmpty()) return new String[]{"CANCELLED", null};
-        if (relevant.stream().allMatch(m -> "DELIVERED".equals(m.fulfillment()))) return new String[]{"DELIVERED", null};
+        // 出貨後才結束（退貨退款）的訂單只保留歷史，不阻擋其餘訂單完成送達
+        var open = relevant.stream().filter(m -> !m.closed()).toList();
+        if (open.isEmpty()) return new String[]{relevant.stream().anyMatch(m -> "DELIVERED".equals(m.fulfillment())) ? "DELIVERED" : "SHIPPED", null};
+        if (open.stream().allMatch(m -> "DELIVERED".equals(m.fulfillment()))) return new String[]{"DELIVERED", null};
         if (relevant.stream().allMatch(m -> !"UNFULFILLED".equals(m.fulfillment()))) return new String[]{"SHIPPED", null};
         var active = members.stream().filter(m -> !m.closed()).toList();
         if (unpaidFee(members)) return new String[]{"WAITING", "FEE"};

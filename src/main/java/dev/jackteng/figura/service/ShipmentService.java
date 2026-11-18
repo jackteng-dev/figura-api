@@ -53,7 +53,8 @@ public class ShipmentService {
     }
     private Detail detail(Map<String, Object> s) {
         var v = reader.view(s); var members = reader.members(v.id());
-        boolean clean = members.stream().filter(m -> !m.closed()).noneMatch(ShipmentReader.Member::flagged);
+        boolean clean = members.stream().filter(m -> !m.closed()).noneMatch(ShipmentReader.Member::flagged)
+                && members.stream().anyMatch(m -> !m.closed() && "SHIPPED".equals(m.fulfillment()));
         boolean ship = v.status().equals("READY") || ("FEE".equals(v.waitingFor()) && ShipmentReader.allReady(members));
         return new Detail(v, mockEnabled, mockEnabled && ship, mockEnabled && clean && v.status().equals("SHIPPED"),
                 db.query("SELECT * FROM shipment_event WHERE shipment_id=? ORDER BY created_at,request_id", events, v.id()));
@@ -111,6 +112,7 @@ public class ShipmentService {
             if (!status.equals("SHIPPED")) throw fail(409, "出貨單需全部已出貨才能標記送達");
             // 與單筆端點相同的守門：有付款待核對或退貨中的訂單不可送達
             if (members.stream().filter(m -> !m.closed()).anyMatch(ShipmentReader.Member::flagged)) throw fail(409, "出貨單有訂單付款待核對或退貨中，暫停送達");
+            if (members.stream().noneMatch(m -> !m.closed() && "SHIPPED".equals(m.fulfillment()))) throw fail(409, "出貨單沒有待送達的有效訂單");
             tracking = (String) s.get("tracking_number");
             if (tracking == null) {
                 // 單一訂單出貨單經舊的單筆端點出貨：現貨沿用訂單的測試貨件號與出貨時間；預購的舊格式貨件號請用單筆端點送達
