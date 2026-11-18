@@ -29,7 +29,7 @@ public class DemoAccountInitializer implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         if (!DemoMigrationGuard.DEMO_DATABASES.contains(jdbc.queryForObject("SELECT DATABASE()", String.class)))
             throw new IllegalStateException("demo 僅可使用獨立 figura_shop_demo 資料庫");
-        demoCustomer.ensureAtStartup(); // 新版示範會員（見 DemoCustomerSeeder）
+        demoCustomer.ensureAtStartup(); // 新版示範會員（見 DemoCustomerSeeder；用獨立連線，不在本交易內）
         if (jdbc.queryForObject("SELECT COUNT(*) FROM user", Integer.class) != 0) return;
         if (adminPassword.length() < 12 || staffPassword.length() < 12 || adminPassword.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 72
                 || staffPassword.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 72 || adminPassword.equals(staffPassword))

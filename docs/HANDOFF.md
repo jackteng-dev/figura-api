@@ -6,8 +6,12 @@
 
 - **本人資料 `View`** 只回傳 `{id, createdAt, email, phone, emailVerified}`；不再回傳內部 `username`／`displayName`（Web／App 同步移除）。`customer.username`／`display_name` 欄位保留（NOT NULL，維持 schema 相容），由系統產生內部值，不能登入、不對外。
 - **刪除無用程式**：舊會員 API `UserController`（`/api/user/*`，filter 早已回 410、不可達）；`CustomerPayloads.USERNAME`、`CustomerMapper.byUsername`、`CustomerSessionService.normalize`。`/api/user/*` 仍由 filter 回 410。員工端 `user` 表、`AdminUser*`、認證、Token、稽核未動。
-- **沙盒示範會員**：`DemoCustomerSeeder`（demo profile，由 `DemoAccountInitializer` 啟動時呼叫）在提供私有 `DEMO_CUSTOMER_PASSWORD` 時建立 Email `demo-customer@example.com`、手機 `0900000000`、Email 已驗證的會員；已存在只核對手機／啟用／驗證（不符停止啟動）與密碼（不符只記錄 ERROR，因 AGENTS 不能重設既有用戶，也避免整站起不來），不修改資料；未設定就不建立。此 Email 的忘記／重設密碼在沙盒不發連結（公開的員工示範帳號能讀模擬信件，否則訪客可改掉公開密碼）。選用 `DEMO_CUSTOMER_SELF_HEAL=true` 每分鐘補建。新增 `DemoCustomerIntegrationTest`（4 項）。
-- **伺服器端每日重置（不在任何 repo，需作者修改，尚未完成）**：①沙盒私有環境加 `DEMO_CUSTOMER_PASSWORD=figura-demo-customer`；②重置資料中移除舊 `demo_customer`（只有帳號名稱）列，也不要放新版示範會員；③重置流程改為「停 API → 重置資料庫 → 啟動 API」，讓啟動時建立示範會員（員工示範帳號 `shop_admin`／`shop_staff` 也只在 `user` 表為空的啟動時建立，同樣需要重啟）；④若重置無法停 API，就設 `DEMO_CUSTOMER_SELF_HEAL=true`，並確認重置資料不含示範會員；⑤重置後檢查：用 `demo-customer@example.com` 與 `0900000000` 各登入一次、API log 沒有「示範會員」ERROR。README（三個 repo）與 App Release 說明使用同一組 Email／手機／密碼（`figura-demo-customer`）。公開沙盒需設定此變數並移除舊 `demo_customer` 種子。
+- **沙盒示範會員**：`DemoCustomerSeeder`（demo profile，由 `DemoAccountInitializer` 啟動時呼叫）在提供私有 `DEMO_CUSTOMER_PASSWORD` 時建立 Email `demo-customer@example.com`、手機 `0900000000`、Email 已驗證的會員。已存在只核對手機／啟用／驗證（不符停止啟動）與密碼（不符只記錄 ERROR：AGENTS 不能重設既有用戶，也避免整個沙盒起不來；但這代表公開帳密失效，重置後登入驗收必須失敗）；不修改資料；未設定就不建立。建立與核對在獨立連線上用 MySQL 具名鎖序列化，並行時不會誤判。沙盒（demo profile 且有示範密碼）下：此 Email 的忘記密碼不發連結、既有重設連結無效（公開員工示範帳號能讀模擬信件，否則訪客可改掉公開密碼）；訪客不能註冊此 Email 或手機。正式環境（非 demo profile）即使有這個變數也不受影響。選用 `DEMO_CUSTOMER_SELF_HEAL=true` 每分鐘補建，只是安全網。新增 `DemoCustomerIntegrationTest`（9 項）。
+- **伺服器端每日重置（不在任何 repo，需作者修改，尚未完成）**：
+  1. 沙盒私有環境加 `DEMO_CUSTOMER_PASSWORD=figura-demo-customer`（與 README／App Release 說明一致）。
+  2. 重置資料移除舊 `demo_customer`（只有帳號名稱）列；**不要**在重置資料裡放新版示範會員（交給 API 建立，密碼才會和環境變數一致）。
+  3. 重置流程必須是「停 API → 重置資料庫 → 啟動 API」。示範會員與員工示範帳號 `shop_admin`／`shop_staff` 都只在 API 啟動時建立（員工帳號只在 `user` 表為空時建立），不重啟就不會補回。`DEMO_CUSTOMER_SELF_HEAL` 不能取代重啟：它不知道還原何時進行、不補員工帳號。
+  4. 重置後驗收：API log 沒有「示範會員」ERROR；用 `demo-customer@example.com` 與 `0900000000` 各登入一次、用 `shop_admin` 登入一次；任何一項失敗都算重置失敗。
 - **測試**：整合測試改驗 View 不含內部欄位，並以資料庫中的真實內部 username 驗證不能登入（401）。隔離 DB `mvn package`：284 項，失敗只有既有 8 項（NotificationIntegrationTest×7、PreorderOrderIntegrationTest×1；開 `MOCK_NOTIFICATIONS_ENABLED=true` 後剩 1 項，原因是測試 DB 不是空的，CI 用全新 DB 不受影響）。本機 demo 重啟後示範會員自動建立，用 Email（大小寫不同）與手機（含連字號）登入成功；HTTP smoke：customer 23、mobile 19、shopping 28、orders 24、payments 23 通過；App live 2 項、網站登入與會員頁實測通過。
 - **舊會員清理**：`work/cleanup-20261118/` 改為檢查「新版示範會員存在」（Email＋手機），舊 `demo_customer` 隨其他舊帳號刪除；隔離 DB 再演練一次清理＋單一交易回復，結果相同。
 ## 2026-11-18：直接購買（單一款式下單，不經購物車）

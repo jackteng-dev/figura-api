@@ -76,7 +76,7 @@ npm install --prefix work/browser-tools --no-save playwright
 node work/browser-tools/node_modules/playwright/cli.js install chromium
 ```
 
-選用 `DEMO_CUSTOMER_PASSWORD`（私有環境，至少 12 字元）：demo profile 啟動時若資料庫還沒有 `demo-customer@example.com`，就建立符合新版規則的示範會員（手機 `0900000000`、Email 已驗證）；已存在只核對（手機、啟用、驗證不符就停止啟動；密碼不符只記錄錯誤），**不修改、不重設密碼**；未設定則不建立。設定後此 Email 的忘記／重設密碼不會發出連結（避免公開帳密被改掉）。選用 `DEMO_CUSTOMER_SELF_HEAL=true`：每分鐘檢查一次，資料被清空時自動補建（每日重置若在 API 執行中還原含示範會員的快照，會和補建撞唯一鍵，建議重置時先停 API）。公開沙盒每日重置請設定 `DEMO_CUSTOMER_PASSWORD` 並移除舊的 `demo_customer`（只有帳號名稱）種子。
+選用 `DEMO_CUSTOMER_PASSWORD`（私有環境，至少 12 字元）：demo profile 啟動時若資料庫還沒有 `demo-customer@example.com`，就建立符合新版規則的示範會員（手機 `0900000000`、Email 已驗證）；已存在只核對（手機、啟用、驗證不符就停止啟動；密碼不符只記錄錯誤），**不修改、不重設密碼**；未設定則不建立。在 demo profile 下，此 Email 的忘記／重設密碼不會發出或接受連結（避免公開帳密被改掉）。沙盒下訪客也不能註冊示範會員的 Email／手機。每日重置必須「停 API → 重置資料庫 → 啟動 API」，示範會員與員工示範帳號才會在啟動時建立；選用 `DEMO_CUSTOMER_SELF_HEAL=true`（每分鐘補建）只是安全網，不能取代重啟。公開沙盒每日重置請設定 `DEMO_CUSTOMER_PASSWORD` 並移除舊的 `demo_customer`（只有帳號名稱）種子。
 
 將同樣 DEMO_ADMIN_PASSWORD／DEMO_STAFF_PASSWORD 私有環境提供給前端終端。示例 Linux（假設兩倉庫相鄰）：
 

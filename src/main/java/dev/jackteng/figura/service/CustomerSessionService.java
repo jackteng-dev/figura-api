@@ -25,6 +25,12 @@ public class CustomerSessionService {
             "if redis.call('GET',KEYS[1])==ARGV[1] then redis.call('SET',KEYS[1],ARGV[2],'EX',ARGV[3]); return 1 end; return 0",Long.class);
     private static final DefaultRedisScript<Long> REVOKE=new DefaultRedisScript<>(
             "if redis.call('GET',KEYS[1])==ARGV[1] then return redis.call('DEL',KEYS[1]) end; return 0",Long.class);
+    /** 沙盒（demo profile 且有示範密碼）：保留示範會員的 Email／手機，訪客不能在重置空檔搶先註冊。 */
+    private boolean reserveDemoIdentity;
+    @org.springframework.beans.factory.annotation.Autowired
+    void demoProtection(org.springframework.core.env.Environment env, @org.springframework.beans.factory.annotation.Value("${DEMO_CUSTOMER_PASSWORD:}") String demoPassword) {
+        this.reserveDemoIdentity = dev.jackteng.figura.config.DemoCustomerSeeder.protects(env, demoPassword);
+    }
     public CustomerSessionService(CustomerMapper customers, BCryptPasswordEncoder passwords, StringRedisTemplate redis, JwtUtil jwt) {
         this.customers=customers;this.passwords=passwords;this.redis=redis;this.jwt=jwt;
     }
@@ -33,6 +39,8 @@ public class CustomerSessionService {
         customer.setPasswordHash(passwords.encode(input.password()));
         // 手機＋Email＋密碼。username／display_name 欄位仍為資料庫必填（保留 schema 相容），由系統產生內部識別值，不對外、不能登入。
         String email=CustomerPayloads.normalizeEmail(input.email()), phone=CustomerPayloads.normalizePhone(input.phone());
+        if (reserveDemoIdentity && dev.jackteng.figura.config.DemoCustomerSeeder.EMAIL.equals(email)) throw new ResponseStatusException(HttpStatus.CONFLICT,"此 Email 已被註冊");
+        if (reserveDemoIdentity && dev.jackteng.figura.config.DemoCustomerSeeder.PHONE.equals(phone)) throw new ResponseStatusException(HttpStatus.CONFLICT,"此手機號碼已被註冊");
         if (customers.byEmail(email)!=null) throw new ResponseStatusException(HttpStatus.CONFLICT,"此 Email 已被註冊");
         if (customers.byPhone(phone)!=null) throw new ResponseStatusException(HttpStatus.CONFLICT,"此手機號碼已被註冊");
         customer.setEmail(email);customer.setPhone(phone);

@@ -103,4 +103,50 @@ class DemoCustomerIntegrationTest {
         assertNotNull(demoId());
         assertEquals(200, login(DemoCustomerSeeder.EMAIL, PASSWORD));
     }
+
+    @Test void existingResetLinkCannotChangeTheDemoPassword() throws Exception {
+        seeder.ensure();
+        String id = demoId(), token = UUID.randomUUID().toString().replace("-", "") + UUID.randomUUID().toString().replace("-", "");
+        String hash = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8)));
+        jdbc.update("INSERT INTO customer_email_token(id,customer_id,purpose,token_hash,email,expires_at) VALUES(?,?,'RESET',?,?,?)",
+                UUID.randomUUID().toString(), id, hash, DemoCustomerSeeder.EMAIL, java.time.LocalDateTime.now().plusMinutes(30));
+        assertEquals(400, post("/customer/auth/password/reset", Map.of("token", token, "password", "visitor-new-password-2026")).getResponse().getStatus());
+        assertEquals(200, login(DemoCustomerSeeder.EMAIL, PASSWORD));
+    }
+
+    @Test void passwordMismatchDoesNotStopStartup() {
+        seeder.ensure();
+        jdbc.update("UPDATE customer SET password_hash=? WHERE email=?", new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder().encode("someone-changed-it-2026"), DemoCustomerSeeder.EMAIL);
+        assertEquals(DemoCustomerSeeder.Status.PASSWORD_MISMATCH, assertDoesNotThrow(seeder::ensureAtStartup));
+    }
+
+    @Test void concurrentChecksCreateExactlyOnceWithoutFalseAlarms() throws Exception {
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(4);
+        try {
+            var start = new java.util.concurrent.CountDownLatch(1);
+            var futures = new ArrayList<java.util.concurrent.Future<DemoCustomerSeeder.Status>>();
+            for (int i = 0; i < 4; i++) futures.add(pool.submit(() -> { start.await(); return seeder.ensure(); }));
+            start.countDown();
+            var statuses = new ArrayList<DemoCustomerSeeder.Status>();
+            for (var f : futures) statuses.add(f.get());
+            assertEquals(1, statuses.stream().filter(x -> x == DemoCustomerSeeder.Status.CREATED).count(), statuses.toString());
+            assertTrue(statuses.stream().allMatch(x -> x == DemoCustomerSeeder.Status.CREATED || x == DemoCustomerSeeder.Status.OK), statuses.toString());
+            assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM customer WHERE email=? OR phone=?", Integer.class, DemoCustomerSeeder.EMAIL, DemoCustomerSeeder.PHONE));
+        } finally { pool.shutdownNow(); }
+    }
+
+    @Test void visitorsCannotRegisterTheDemoEmailOrPhone() throws Exception {
+        String other = "visitor-" + UUID.randomUUID().toString().substring(0, 8) + "@example.test";
+        assertEquals(409, post("/customer/auth/register", Map.of("email", DemoCustomerSeeder.EMAIL, "phone", "09" + String.format("%08d", new Random().nextInt(100_000_000)), "password", "visitor-password-2026")).getResponse().getStatus());
+        assertEquals(409, post("/customer/auth/register", Map.of("email", other, "phone", "0900-000-000", "password", "visitor-password-2026")).getResponse().getStatus());
+        assertNull(demoId());
+    }
+
+    @Test void protectionOnlyAppliesToTheDemoProfileWithAPassword() {
+        var demo = new org.springframework.mock.env.MockEnvironment(); demo.setActiveProfiles("demo");
+        var prod = new org.springframework.mock.env.MockEnvironment();
+        assertTrue(DemoCustomerSeeder.protects(demo, PASSWORD));
+        assertFalse(DemoCustomerSeeder.protects(demo, ""));
+        assertFalse(DemoCustomerSeeder.protects(prod, PASSWORD));
+    }
 }
