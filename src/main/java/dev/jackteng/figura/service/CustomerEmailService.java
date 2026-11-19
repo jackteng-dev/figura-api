@@ -38,7 +38,9 @@ public class CustomerEmailService {
     private final SecureRandom random = new SecureRandom();
 
     public CustomerEmailService(JdbcTemplate db, CustomerMapper customers, BCryptPasswordEncoder passwords, StringRedisTemplate redis,
-                                CustomerSessionService sessions, @Value("${MOCK_EMAIL_ENABLED:false}") boolean mockEnabled) {
+                                CustomerSessionService sessions, @Value("${MOCK_EMAIL_ENABLED:false}") boolean mockEnabled,
+                                @Value("${DEMO_CUSTOMER_PASSWORD:}") String demoCustomerPassword, org.springframework.core.env.Environment env) {
+        this.protectDemoCustomer = dev.jackteng.figura.config.DemoCustomerSeeder.protects(env, demoCustomerPassword);
         this.db = db; this.customers = customers; this.passwords = passwords; this.redis = redis; this.sessions = sessions; this.mockEnabled = mockEnabled;
     }
 
@@ -72,11 +74,16 @@ public class CustomerEmailService {
         return CustomerPayloads.View.from(customers.byId(customer.getId()));
     }
 
+    /** 沙盒（demo profile 且有設定示範會員密碼）時，公開示範會員不能被訪客重設密碼，避免公開帳密失效。 */
+    private final boolean protectDemoCustomer;
+    private boolean isProtectedDemo(String email) { return protectDemoCustomer && dev.jackteng.figura.config.DemoCustomerSeeder.EMAIL.equals(email); }
+
     /** 忘記密碼：同一信箱每小時最多 3 封；不論信箱是否存在都靜默成功。 */
     @Transactional
     public void forgot(String rawEmail) {
         String email = CustomerPayloads.normalizeEmail(rawEmail);
         if (email == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Email 格式不正確");
+        if (isProtectedDemo(email)) return; // 同樣靜默成功，不發重設連結
         if (!throttle("shop:customer:email:forgot:" + email, 3, Duration.ofHours(1))) return;
         var customer = customers.byEmail(email);
         if (customer == null || !customer.isEnabled()) return;
@@ -89,7 +96,7 @@ public class CustomerEmailService {
     public void reset(String token, String password) {
         var row = consume(token, RESET);
         var customer = customers.lockById(row.customerId());
-        if (customer == null || !customer.isEnabled() || !row.email().equals(customer.getEmail())) throw invalidLink();
+        if (customer == null || !customer.isEnabled() || !row.email().equals(customer.getEmail()) || isProtectedDemo(customer.getEmail())) throw invalidLink();
         customers.updatePassword(customer.getId(), passwords.encode(password));
         // 其他尚未使用的重設連結一併作廢
         db.update("UPDATE customer_email_token SET used_at=CURRENT_TIMESTAMP(6) WHERE customer_id=? AND purpose=? AND used_at IS NULL", customer.getId(), RESET);

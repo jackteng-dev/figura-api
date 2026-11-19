@@ -9,7 +9,7 @@ Figura 是公仔／收藏品單店的後端作品（原名 ELPSY Shop）。
 ## 展示
 
 - [線上沙盒 figura.jackteng.dev](https://figura.jackteng.dev)：可實際瀏覽商品、加入購物車、下單並模擬付款，也能用示範帳號進入員工後台（`/admin/login`）處理出貨與退貨。資料皆為虛構，每天 04:00（台北時間）自動重置。
-  - 顧客：`demo_customer` / `figura-demo-customer`（也可自行註冊）
+  - 顧客：Email `demo-customer@example.com` 或手機 `0900000000`，密碼 `figura-demo-customer`（也可用手機＋Email 自行註冊）
   - 店長：`shop_admin` / `figura-demo-admin`；員工：`shop_staff` / `figura-demo-staff`
 - 沙盒與正式部署使用相同版本；為了讓每位訪客都能使用，停用員工／角色異動與商品圖片上傳。
 

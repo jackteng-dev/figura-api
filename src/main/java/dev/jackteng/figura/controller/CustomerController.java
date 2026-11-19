@@ -41,6 +41,4 @@ public class CustomerController {
     public Result<Void> logout(HttpServletRequest request,HttpServletResponse response){sessions.logout(JwtUtil.extractCookieToken(request,CustomerSessionService.REFRESH_COOKIE),response);return Result.success();}
     @GetMapping({"/customer/me","/mobile/customer/me"})
     public Result<CustomerPayloads.View> me(@AuthenticationPrincipal CustomerPrincipal current){return Result.success(sessions.ownProfile(current.id()));}
-    @PatchMapping({"/customer/me","/mobile/customer/me"})
-    public Result<CustomerPayloads.View> update(@AuthenticationPrincipal CustomerPrincipal current,@RequestBody @Valid CustomerPayloads.Profile profile){return Result.success(sessions.updateOwnProfile(current.id(),profile));}
 }

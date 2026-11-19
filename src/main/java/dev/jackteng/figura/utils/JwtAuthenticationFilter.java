@@ -71,11 +71,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
     public static boolean customerRouteAllowed(String path,String method) {
         var matcher=new AntPathMatcher();
-        return (path.equals("/api/customer/me")&&(method.equals("GET")||method.equals("PATCH")))
+        return (path.equals("/api/customer/me")&&method.equals("GET"))
                     || (path.equals("/api/customer/email/verification")&&method.equals("POST"))
                     || (path.equals("/api/customer/cart")&&method.equals("GET"))
                     || (matcher.match("/api/customer/cart/items/*",path)&&(method.equals("PUT")||method.equals("DELETE")))
+                    || (matcher.match("/api/customer/cart/preorders/*",path)&&(method.equals("PUT")||method.equals("DELETE")))
                     || (path.equals("/api/customer/orders")&&(method.equals("GET")||method.equals("POST")))
+                    || (path.equals("/api/customer/orders/direct")&&method.equals("POST"))
+                    || (path.equals("/api/customer/order-center")&&method.equals("GET"))
+                    || (path.equals("/api/customer/checkout/quote")&&method.equals("GET"))
+                    || (path.equals("/api/customer/checkout/pickup-stores")&&method.equals("GET"))
+                    || (path.equals("/api/customer/checkout")&&method.equals("POST"))
                     || (path.equals("/api/customer/preorders")&&(method.equals("GET")||method.equals("POST")))
                     || (matcher.match("/api/customer/preorders/*",path)&&method.equals("GET"))
                     || (matcher.match("/api/customer/preorders/*/cancel",path)&&method.equals("POST"))

@@ -52,25 +52,27 @@ class CustomerIdentityIntegrationTest {
     private String field(MvcResult result,String name) throws Exception {return json.readTree(result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8)).path("data").path(name).asText();}
     private String username(){return "test_"+UUID.randomUUID().toString().replace("-","").substring(0,20);}
     private MvcResult register(Client client,String name) throws Exception {
-        var result=call(client,"POST","/customer/auth/register",Map.of("username",name,"password",PASSWORD,"displayName","展示會員"));
+        var result=call(client,"POST","/customer/auth/register",Map.of("email",name+"@example.test","phone",TestPhones.next(),"password",PASSWORD));
         if(result.getResponse().getStatus()==201)ids.add(field(result,"id"));return result;
     }
     private Client login(String name) throws Exception {
-        var client=guest();var result=call(client,"POST","/customer/auth/login",Map.of("username",name,"password",PASSWORD,"deviceId",UUID.randomUUID().toString(),"rememberMe",false));assertEquals(200,result.getResponse().getStatus());
+        var client=guest();var result=call(client,"POST","/customer/auth/login",Map.of("username",name+"@example.test","password",PASSWORD,"deviceId",UUID.randomUUID().toString(),"rememberMe",false));assertEquals(200,result.getResponse().getStatus());
         return new Client(client.csrf(),List.of(client.cookies().get(0),cookie(result,"customerAccessToken"),cookie(result,"customerRefreshToken")));
     }
     private Client rotated(Client before,MvcResult result){return new Client(before.csrf(),List.of(before.cookies().get(0),cookie(result,"customerAccessToken"),cookie(result,"customerRefreshToken")));}
     @AfterEach void cleanup(){
-        for(String id:ids){jdbc.update("DELETE FROM customer WHERE id=?",id);var keys=redis.keys("shop:customer:session:"+id+":*");if(keys!=null&&!keys.isEmpty())redis.delete(keys);}
+        for(String id:ids){jdbc.update("DELETE FROM customer_email_token WHERE customer_id=?",id);jdbc.update("DELETE FROM customer_mock_email WHERE customer_id=?",id);jdbc.update("DELETE FROM customer WHERE id=?",id);var keys=redis.keys("shop:customer:session:"+id+":*");if(keys!=null&&!keys.isEmpty())redis.delete(keys);}
     }
     @Test void registrationValidationProjectionAndBcrypt() throws Exception {
         var guest=guest();String name=username();var result=register(guest,name);assertEquals(201,result.getResponse().getStatus());
-        var data=json.readTree(result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8)).path("data");assertEquals(Set.of("id","username","displayName","createdAt","email","phone","emailVerified"),json.convertValue(data,Map.class).keySet());
+        var data=json.readTree(result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8)).path("data");assertEquals(Set.of("id","createdAt","email","phone","emailVerified"),json.convertValue(data,Map.class).keySet());
         assertTrue(encoder.matches(PASSWORD,jdbc.queryForObject("SELECT password_hash FROM customer WHERE id=?",String.class,field(result,"id"))));
         assertEquals(409,register(guest,name.toUpperCase(Locale.ROOT)).getResponse().getStatus());
-        assertEquals(400,call(guest,"POST","/customer/auth/register",Map.of("username",username(),"password",PASSWORD,"displayName","名稱","role","STAFF")).getResponse().getStatus());
-        assertEquals(400,call(guest,"POST","/customer/auth/register",Map.of("username",username(),"password","short","displayName","名稱")).getResponse().getStatus());
-        assertEquals(400,call(guest,"POST","/customer/auth/register",Map.of("username",username(),"password","測".repeat(25),"displayName","名稱")).getResponse().getStatus());
+        assertEquals(400,call(guest,"POST","/customer/auth/register",Map.of("email",username()+"@example.test","phone",TestPhones.next(),"password",PASSWORD,"role","STAFF")).getResponse().getStatus());
+        assertEquals(400,call(guest,"POST","/customer/auth/register",Map.of("email",username()+"@example.test","phone",TestPhones.next(),"password","short")).getResponse().getStatus());
+        assertEquals(400,call(guest,"POST","/customer/auth/register",Map.of("email",username()+"@example.test","phone",TestPhones.next(),"password","測".repeat(25))).getResponse().getStatus());
+        // 舊格式（帳號名稱＋暱稱）已停用
+        assertEquals(400,call(guest,"POST","/customer/auth/register",Map.of("username",username(),"password",PASSWORD,"displayName","名稱")).getResponse().getStatus());
         assertEquals(401,call(guest,"GET","/customer/me",null).getResponse().getStatus());
         var missingCsrf=mvc.perform(path(post("/figura/api/customer/auth/register"),"/customer/auth/register").contentType("application/json").content("{}")).andReturn();assertEquals(403,missingCsrf.getResponse().getStatus());
         assertEquals(410,call(guest,"POST","/user/register",Map.of()).getResponse().getStatus());
@@ -78,13 +80,10 @@ class CustomerIdentityIntegrationTest {
     @Test void ownershipIgnoresQueryIdAndRejectsMassAssignment() throws Exception {
         String a=username(),b=username();var guest=guest();String idA=field(register(guest,a),"id"),idB=field(register(guest,b),"id");var client=login(a);
         var getOwn=mvc.perform(path(get("/figura/api/customer/me"),"/customer/me").param("id",idB).cookie(client.cookies().toArray(Cookie[]::new))).andReturn();assertEquals(idA,field(getOwn,"id"));
-        assertEquals(400,call(client,"PATCH","/customer/me",Map.of("displayName","竄改","id",idB)).getResponse().getStatus());
-        assertEquals(400,call(client,"PATCH","/customer/me",Map.of("displayName","竄改","enabled",false)).getResponse().getStatus());
-        assertEquals(400,call(client,"PATCH","/customer/me",Map.of("displayName"," ")).getResponse().getStatus());
+        // 暱稱已移除：PATCH /customer/me 不再開放
+        assertEquals(403,call(client,"PATCH","/customer/me",Map.of("displayName","竄改","id",idB)).getResponse().getStatus());
         assertEquals(403,call(client,"GET","/customer/"+idB,null).getResponse().getStatus());
-        assertEquals(200,call(client,"PATCH","/customer/me",Map.of("displayName","我的收藏")).getResponse().getStatus());
-        assertEquals("我的收藏",jdbc.queryForObject("SELECT display_name FROM customer WHERE id=?",String.class,idA));
-        assertEquals("展示會員",jdbc.queryForObject("SELECT display_name FROM customer WHERE id=?",String.class,idB));
+        assertTrue(jdbc.queryForObject("SELECT display_name FROM customer WHERE id=?",String.class,idB).startsWith("會員"));
     }
     @Test void realMysqlConcurrentCanonicalUsernameHasOneWinner() throws Exception {
         String name=username();var guest=guest();var pool=Executors.newFixedThreadPool(2);var start=new CountDownLatch(1);
@@ -92,7 +91,7 @@ class CustomerIdentityIntegrationTest {
             var one=pool.submit(()->{start.await();return register(guest,name).getResponse().getStatus();});
             var two=pool.submit(()->{start.await();return register(guest,name.toUpperCase(Locale.ROOT)).getResponse().getStatus();});start.countDown();
             assertEquals(Set.of(201,409),Set.of(one.get(15,TimeUnit.SECONDS),two.get(15,TimeUnit.SECONDS)));
-            assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM customer WHERE username=?",Integer.class,name));
+            assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM customer WHERE email=?",Integer.class,name+"@example.test"));
         }finally{pool.shutdownNow();}
     }
     @Test void cookieAndRealmIsolationPreserveOtherAudienceLogout() throws Exception {
@@ -123,6 +122,6 @@ class CustomerIdentityIntegrationTest {
         String name=username();var result=register(guest(),name);String id=field(result,"id");var client=login(name);
         jdbc.update("UPDATE customer SET enabled=FALSE WHERE id=?",id);
         assertEquals(401,call(client,"GET","/customer/me",null).getResponse().getStatus());assertEquals(401,call(client,"POST","/customer/auth/refresh",null).getResponse().getStatus());
-        assertEquals(401,call(guest(),"POST","/customer/auth/login",Map.of("username",name,"password",PASSWORD,"deviceId",UUID.randomUUID().toString(),"rememberMe",false)).getResponse().getStatus());
+        assertEquals(401,call(guest(),"POST","/customer/auth/login",Map.of("username",name+"@example.test","password",PASSWORD,"deviceId",UUID.randomUUID().toString(),"rememberMe",false)).getResponse().getStatus());
     }
 }

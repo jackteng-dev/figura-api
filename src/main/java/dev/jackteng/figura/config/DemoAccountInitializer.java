@@ -16,16 +16,20 @@ public class DemoAccountInitializer implements ApplicationRunner {
     private final BCryptPasswordEncoder encoder;
     private final String adminPassword;
     private final String staffPassword;
+    private final DemoCustomerSeeder demoCustomer;
     public DemoAccountInitializer(JdbcTemplate jdbc, BCryptPasswordEncoder encoder,
                                   @Value("${DEMO_ADMIN_PASSWORD:}") String adminPassword,
-                                  @Value("${DEMO_STAFF_PASSWORD:}") String staffPassword) {
+                                  @Value("${DEMO_STAFF_PASSWORD:}") String staffPassword,
+                                  DemoCustomerSeeder demoCustomer) {
         this.jdbc = jdbc; this.encoder = encoder; this.adminPassword = adminPassword; this.staffPassword = staffPassword;
+        this.demoCustomer = demoCustomer;
     }
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
         if (!DemoMigrationGuard.DEMO_DATABASES.contains(jdbc.queryForObject("SELECT DATABASE()", String.class)))
             throw new IllegalStateException("demo 僅可使用獨立 figura_shop_demo 資料庫");
+        demoCustomer.ensureAtStartup(); // 新版示範會員（見 DemoCustomerSeeder；用獨立連線，不在本交易內）
         if (jdbc.queryForObject("SELECT COUNT(*) FROM user", Integer.class) != 0) return;
         if (adminPassword.length() < 12 || staffPassword.length() < 12 || adminPassword.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 72
                 || staffPassword.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 72 || adminPassword.equals(staffPassword))

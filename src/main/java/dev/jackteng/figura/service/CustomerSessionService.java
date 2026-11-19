@@ -25,26 +25,27 @@ public class CustomerSessionService {
             "if redis.call('GET',KEYS[1])==ARGV[1] then redis.call('SET',KEYS[1],ARGV[2],'EX',ARGV[3]); return 1 end; return 0",Long.class);
     private static final DefaultRedisScript<Long> REVOKE=new DefaultRedisScript<>(
             "if redis.call('GET',KEYS[1])==ARGV[1] then return redis.call('DEL',KEYS[1]) end; return 0",Long.class);
+    /** 沙盒（demo profile 且有示範密碼）：保留示範會員的 Email／手機，訪客不能在重置空檔搶先註冊。 */
+    private boolean reserveDemoIdentity;
+    @org.springframework.beans.factory.annotation.Autowired
+    void demoProtection(org.springframework.core.env.Environment env, @org.springframework.beans.factory.annotation.Value("${DEMO_CUSTOMER_PASSWORD:}") String demoPassword) {
+        this.reserveDemoIdentity = dev.jackteng.figura.config.DemoCustomerSeeder.protects(env, demoPassword);
+    }
     public CustomerSessionService(CustomerMapper customers, BCryptPasswordEncoder passwords, StringRedisTemplate redis, JwtUtil jwt) {
         this.customers=customers;this.passwords=passwords;this.redis=redis;this.jwt=jwt;
     }
     public Customer register(CustomerPayloads.Registration input) {
         var customer=new Customer();customer.setId(UUID.randomUUID().toString());
         customer.setPasswordHash(passwords.encode(input.password()));
-        if (input.contactStyle()) {
-            // V19 新版：手機＋信箱＋密碼。內部自動產生 username（不對外使用），暱稱預設「會員＋手機末四碼」，可在會員中心修改。
-            String email=CustomerPayloads.normalizeEmail(input.email()), phone=CustomerPayloads.normalizePhone(input.phone());
-            if (customers.byEmail(email)!=null) throw new ResponseStatusException(HttpStatus.CONFLICT,"此 Email 已被註冊");
-            // 舊帳號允許純數字名稱：手機號碼若等於既有帳號名稱，同樣視為已被使用，避免舊會員失去登入通道
-            if (customers.byPhone(phone)!=null || customers.byUsername(phone)!=null) throw new ResponseStatusException(HttpStatus.CONFLICT,"此手機號碼已被註冊");
-            customer.setEmail(email);customer.setPhone(phone);
-            customer.setUsername("m_"+UUID.randomUUID().toString().replace("-","").substring(0,24));
-            customer.setDisplayName("會員"+phone.substring(phone.length()-4));
-        } else {
-            // 舊版（App）帳號名稱不可是手機格式，避免與手機登入互相混淆
-            if (CustomerPayloads.normalizePhone(input.username())!=null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"帳號不可使用手機號碼格式");
-            customer.setUsername(normalize(input.username()));customer.setDisplayName(input.displayName().strip());
-        }
+        // 手機＋Email＋密碼。username／display_name 欄位仍為資料庫必填（保留 schema 相容），由系統產生內部識別值，不對外、不能登入。
+        String email=CustomerPayloads.normalizeEmail(input.email()), phone=CustomerPayloads.normalizePhone(input.phone());
+        if (reserveDemoIdentity && dev.jackteng.figura.config.DemoCustomerSeeder.EMAIL.equals(email)) throw new ResponseStatusException(HttpStatus.CONFLICT,"此 Email 已被註冊");
+        if (reserveDemoIdentity && dev.jackteng.figura.config.DemoCustomerSeeder.PHONE.equals(phone)) throw new ResponseStatusException(HttpStatus.CONFLICT,"此手機號碼已被註冊");
+        if (customers.byEmail(email)!=null) throw new ResponseStatusException(HttpStatus.CONFLICT,"此 Email 已被註冊");
+        if (customers.byPhone(phone)!=null) throw new ResponseStatusException(HttpStatus.CONFLICT,"此手機號碼已被註冊");
+        customer.setEmail(email);customer.setPhone(phone);
+        customer.setUsername("m_"+UUID.randomUUID().toString().replace("-","").substring(0,24));
+        customer.setDisplayName("會員"+phone.substring(phone.length()-4));
         try { customers.insert(customer); }
         catch (DuplicateKeyException e) {
             // 同時註冊的競爭：以違反的唯一鍵判斷訊息
@@ -55,14 +56,12 @@ public class CustomerSessionService {
         }
         return customers.byId(customer.getId());
     }
-    /** 依登入識別找顧客：含 @ 視為 Email，符合台灣手機視為手機，否則為舊帳號名稱。 */
+    /** 依登入識別找顧客：只接受 Email 或台灣手機；帳號名稱登入已停用。 */
     private Customer byLoginIdentifier(String raw) {
         String value=raw.strip();
         if (value.contains("@")) { String email=CustomerPayloads.normalizeEmail(value); return email==null?null:customers.byEmail(email); }
         String phone=CustomerPayloads.normalizePhone(value);
-        if (phone!=null) { var byPhone=customers.byPhone(phone); if (byPhone!=null) return byPhone; }
-        // 手機查不到時退回舊帳號名稱（舊規則允許純數字帳號，例如 0912345678）
-        return CustomerPayloads.USERNAME.matcher(value).matches()?customers.byUsername(normalize(value)):null;
+        return phone==null?null:customers.byPhone(phone);
     }
     /**
      * 登入與重設密碼競爭：登入先讀到舊密碼雜湊並驗證通過，若在 revokeAll() 之後才寫入 session，舊密碼會留下有效登入。
@@ -128,10 +127,6 @@ public class CustomerSessionService {
                 JwtUtil.ACCESS_LIFETIME.toSeconds(),CustomerPayloads.View.from(customer));
     }
     public CustomerPayloads.View ownProfile(String authenticatedId) { return CustomerPayloads.View.from(activeCustomer(authenticatedId)); }
-    public CustomerPayloads.View updateOwnProfile(String authenticatedId,CustomerPayloads.Profile profile) {
-        if(customers.updateOwnDisplayName(authenticatedId,profile.displayName().strip())!=1) throw unauthorized();
-        return ownProfile(authenticatedId);
-    }
     public void refresh(String token,HttpServletResponse response) {
         var old=verified(token,"refresh");var customer=activeCustomer((String)old.get("id"));
         var next=claims(customer,(String)old.get("deviceId"),UUID.randomUUID().toString(),Boolean.TRUE.equals(old.get("rememberMe")));
@@ -165,7 +160,6 @@ public class CustomerSessionService {
         jwt.setJwtCookie(response,ACCESS_COOKIE,jwt.genAccessToken(claims),remember?(int)JwtUtil.ACCESS_LIFETIME.toSeconds():-1);
         jwt.setJwtCookie(response,REFRESH_COOKIE,jwt.genRefreshToken(claims),remember?(int)JwtUtil.REFRESH_LIFETIME.toSeconds():-1);
     }
-    private String normalize(String username){return username.toLowerCase(Locale.ROOT);}
     /** 登入失敗一律同一訊息，不揭露帳號是否存在。 */
     private ResponseStatusException badCredentials(){return new ResponseStatusException(HttpStatus.UNAUTHORIZED,"帳號或密碼不正確");}
     private ResponseStatusException unauthorized(){return new ResponseStatusException(HttpStatus.UNAUTHORIZED,"顧客登入狀態無效");}

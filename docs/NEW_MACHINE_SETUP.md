@@ -37,7 +37,7 @@ java -jar target/figura-api-1.0-SNAPSHOT.jar --spring.profiles.active=demo
 
 API 在 `http://127.0.0.1:19092/figura/api`。非 demo profile 不建立展示用戶，正式設定必須自行提供 DB、Redis、JWT_SECRET 與原 schema。後續圖片採 SeaweedFS；目前物件儲存未啟動，本輪不驗上傳。
 
-顧客入口 `http://127.0.0.1:15176/shop`，自行註冊合成會員；`/shop/account` 編輯本人暱稱，員工入口仍 `/admin/login`。顧客與員工可同瀏覽器共存；顧客 Cookie 是 customerAccessToken／customerRefreshToken、獨立 customerDeviceId。兩種 JWT 新增 realm，舊員工 token 需重新登入，沒有改既有密碼。舊 /api/user/* 一律410，不再作公開會員入口。
+顧客入口 `http://127.0.0.1:15176/shop`，以手機＋Email 自行註冊合成會員；`/shop/account` 查看本人 Email／手機與驗證狀態（沒有暱稱），員工入口仍 `/admin/login`。顧客與員工可同瀏覽器共存；顧客 Cookie 是 customerAccessToken／customerRefreshToken、獨立 customerDeviceId。兩種 JWT 新增 realm，舊員工 token 需重新登入，沒有改既有密碼。舊 /api/user/* 一律410，不再作公開會員入口。
 
 Cookie 預設 HttpOnly、SameSite=Strict、Secure=true；私有 demo 檔明確 false 僅用於 loopback HTTP。正式同源 HTTPS 維持 Secure=true。除精確POST /api/payments/mock/callback改驗私有HMAC外，所有不安全 method 需要 CSRF：先 GET auth/csrf，再以 Cookie 與 X-XSRF-TOKEN 操作。access 15 分、refresh 7 天；rememberMe 控制 Cookie 持久性，不更改 token 到期。
 
@@ -76,6 +76,8 @@ npm install --prefix work/browser-tools --no-save playwright
 node work/browser-tools/node_modules/playwright/cli.js install chromium
 ```
 
+選用 `DEMO_CUSTOMER_PASSWORD`（私有環境，至少 12 字元）：demo profile 啟動時若資料庫還沒有 `demo-customer@example.com`，就建立符合新版規則的示範會員（手機 `0900000000`、Email 已驗證）；已存在只核對（手機、啟用、驗證不符就停止啟動；密碼不符只記錄錯誤），**不修改、不重設密碼**；未設定則不建立。在 demo profile 下，此 Email 的忘記／重設密碼不會發出或接受連結（避免公開帳密被改掉）。沙盒下訪客也不能註冊示範會員的 Email／手機。每日重置必須「停 API → 重置資料庫 → 啟動 API」，示範會員與員工示範帳號才會在啟動時建立；選用 `DEMO_CUSTOMER_SELF_HEAL=true`（每分鐘補建）只是安全網，不能取代重啟。公開沙盒每日重置請設定 `DEMO_CUSTOMER_PASSWORD` 並移除舊的 `demo_customer`（只有帳號名稱）種子。
+
 將同樣 DEMO_ADMIN_PASSWORD／DEMO_STAFF_PASSWORD 私有環境提供給前端終端。示例 Linux（假設兩倉庫相鄰）：
 
 ```sh
@@ -91,7 +93,7 @@ PLAYWRIGHT_MODULE_PATH="$PWD/work/browser-tools/node_modules/playwright" node sc
 
 有系統 Chromium 可提供 PLAYWRIGHT_CHROMIUM_PATH；PLAYWRIGHT_MODULE_PATH 使用絕對路徑。
 
-SHOP_FRONTEND_URL 可改 loopback URL，預設15176；測試阻擋外部網路資源，只驗本作品。顧客腳本驗證註冊、錯密碼、本人暱稱持久化／文字轉義、refresh、員工共存／獨立登出、390px 註冊頁與 JS 錯誤；員工腳本仍是管理頁占位路由與真實登入。商品腳本另驗多 SKU 草稿、權限、上架／下架、公開投影、版本衝突、封存與390px商品頁。先在沒有上架商品的可拋棄 demo 跑它；只封存自建商品，不刪用戶資料。交易仍未完成。
+SHOP_FRONTEND_URL 可改 loopback URL，預設15176；測試阻擋外部網路資源，只驗本作品。顧客腳本驗證手機＋Email 註冊、錯密碼、舊格式註冊與帳號名稱登入被拒、refresh、員工共存／獨立登出、390px 註冊頁與 JS 錯誤；員工腳本仍是管理頁占位路由與真實登入。商品腳本另驗多 SKU 草稿、權限、上架／下架、公開投影、版本衝突、封存與390px商品頁。先在沒有上架商品的可拋棄 demo 跑它；只封存自建商品，不刪用戶資料。交易仍未完成。
 
 ## 5. 收尾／保存
 

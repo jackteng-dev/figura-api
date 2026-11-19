@@ -50,8 +50,8 @@ class NotificationIntegrationTest {
     private Client guest() throws Exception{var r=call(null,"GET","/auth/csrf",null);return new Client(data(r).path("token").asText(),List.of(cookie(r,"XSRF-TOKEN")),"");}
     private Client customer() throws Exception{
         var c=guest();String name="cart_"+UUID.randomUUID().toString().replace("-","").substring(0,20),password="test-cart-password-2026",device=UUID.randomUUID().toString();
-        var r=call(c,"POST","/customer/auth/register",Map.of("username",name,"password",password,"displayName","合成顧客"));assertEquals(201,r.getResponse().getStatus());String id=data(r).path("id").asText();customers.add(id);
-        r=call(c,"POST","/customer/auth/login",Map.of("username",name,"password",password,"deviceId",device,"rememberMe",false));assertEquals(200,r.getResponse().getStatus());sessions.add("shop:customer:session:"+id+":"+device);
+        var r=call(c,"POST","/customer/auth/register",Map.of("email",name+"@example.test","phone",TestPhones.next(),"password",password));assertEquals(201,r.getResponse().getStatus());String id=data(r).path("id").asText();customers.add(id);
+        r=call(c,"POST","/customer/auth/login",Map.of("username",name+"@example.test","password",password,"deviceId",device,"rememberMe",false));assertEquals(200,r.getResponse().getStatus());sessions.add("shop:customer:session:"+id+":"+device);
         return new Client(c.csrf(),List.of(c.cookies().get(0),cookie(r,"customerAccessToken"),cookie(r,"customerRefreshToken")),id);
     }
     private Client admin() throws Exception{
@@ -175,7 +175,7 @@ class NotificationIntegrationTest {
         var a=admin();var b=employee(true);var c=customer();var o=place(c,ready(c,fixture(a,3),1));var id=message(o,"ORDER_PLACED");var x=command(id,"SUCCESS");var y=command(id,"SUCCESS");var pool=Executors.newFixedThreadPool(2);var start=new CountDownLatch(1);try{var first=pool.submit(()->{start.await();return dispatch(a,id,x).getResponse().getStatus();});var second=pool.submit(()->{start.await();return dispatch(b,id,y).getResponse().getStatus();});start.countDown();var results=List.of(first.get(15,TimeUnit.SECONDS),second.get(15,TimeUnit.SECONDS));assertTrue(results.contains(200));assertTrue(results.contains(409));assertEquals(1,receipts(id));assertEquals(1,notifications.detail(id).message().attempts());assertEquals(1,notifications.detail(id).events().size());}finally{pool.shutdownNow();}
     }
     @Test void captureRequiresTransactionAndDisabledDeliveryDoesNoWork()throws Exception{
-        assertThrows(org.springframework.transaction.IllegalTransactionStateException.class,()->capture.enqueue(null,"ORDER_PLACED",UUID.randomUUID().toString()));var disabled=new dev.jackteng.figura.service.NotificationService(null,null,null,false);assertNull(disabled.runOne());assertEquals(404,assertThrows(org.springframework.web.server.ResponseStatusException.class,()->disabled.dispatch(UUID.randomUUID().toString(),null,null)).getStatusCode().value());assertEquals(20,jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1",Integer.class));
+        assertThrows(org.springframework.transaction.IllegalTransactionStateException.class,()->capture.enqueue(null,"ORDER_PLACED",UUID.randomUUID().toString()));var disabled=new dev.jackteng.figura.service.NotificationService(null,null,null,false);assertNull(disabled.runOne());assertEquals(404,assertThrows(org.springframework.web.server.ResponseStatusException.class,()->disabled.dispatch(UUID.randomUUID().toString(),null,null)).getStatusCode().value());assertEquals(MigrationCount.files(),jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1",Integer.class));
     }
     @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
     @Test void workerSkipsLockedMessageAndPersistsSystemAudit()throws Exception{

@@ -40,8 +40,8 @@ class ShoppingIntegrationTest {
     private Client guest() throws Exception{var r=call(null,"GET","/auth/csrf",null);return new Client(data(r).path("token").asText(),List.of(cookie(r,"XSRF-TOKEN")),"");}
     private Client customer() throws Exception{
         var c=guest();String name="cart_"+UUID.randomUUID().toString().replace("-","").substring(0,20),password="test-cart-password-2026",device=UUID.randomUUID().toString();
-        var r=call(c,"POST","/customer/auth/register",Map.of("username",name,"password",password,"displayName","合成顧客"));assertEquals(201,r.getResponse().getStatus());String id=data(r).path("id").asText();customers.add(id);
-        r=call(c,"POST","/customer/auth/login",Map.of("username",name,"password",password,"deviceId",device,"rememberMe",false));assertEquals(200,r.getResponse().getStatus());sessions.add("shop:customer:session:"+id+":"+device);
+        var r=call(c,"POST","/customer/auth/register",Map.of("email",name+"@example.test","phone",TestPhones.next(),"password",password));assertEquals(201,r.getResponse().getStatus());String id=data(r).path("id").asText();customers.add(id);
+        r=call(c,"POST","/customer/auth/login",Map.of("username",name+"@example.test","password",password,"deviceId",device,"rememberMe",false));assertEquals(200,r.getResponse().getStatus());sessions.add("shop:customer:session:"+id+":"+device);
         return new Client(c.csrf(),List.of(c.cookies().get(0),cookie(r,"customerAccessToken"),cookie(r,"customerRefreshToken")),id);
     }
     private Client admin() throws Exception{
@@ -57,7 +57,7 @@ class ShoppingIntegrationTest {
     private Map<String,Object> quantity(int version,int quantity){return new HashMap<>(Map.of("expectedVersion",version,"quantity",quantity));}
     private Map<String,Object> address(int version){return new HashMap<>(Map.of("expectedVersion",version,"recipientName","合成收件人","phone","0912345678","postalCode","100","city","測試市","district","測試區","street","合成路 1 號"));}
     @AfterEach void cleanup(){
-        for(String id:customers)jdbc.update("DELETE FROM customer WHERE id=?",id);
+        for(String id:customers){jdbc.update("DELETE FROM customer_email_token WHERE customer_id=?",id);jdbc.update("DELETE FROM customer_mock_email WHERE customer_id=?",id);jdbc.update("DELETE FROM customer WHERE id=?",id);}
         for(String id:products)jdbc.update("UPDATE catalog_product SET status='ARCHIVED' WHERE id=?",id);
         if(!sessions.isEmpty())redis.delete(sessions);
     }
@@ -112,7 +112,7 @@ class ShoppingIntegrationTest {
     @Test void databaseQuantityCheckAndCustomerCascadeOnlyRemoveOwnedData() throws Exception{
         var admin=admin();var f=fixture(admin,3);var a=customer();var b=customer();for(var c:List.of(a,b)){assertEquals(200,call(c,"PUT",f.cart(),quantity(0,1)).getResponse().getStatus());assertEquals(200,call(c,"PUT","/customer/addresses/"+UUID.randomUUID(),address(0)).getResponse().getStatus());}
         assertThrows(DataAccessException.class,()->jdbc.update("UPDATE customer_cart_item SET quantity=0 WHERE customer_id=?",a.id()));assertEquals(1,cart(a).path("items").get(0).path("quantity").asInt());
-        jdbc.update("DELETE FROM customer WHERE id=?",a.id());assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM customer_cart WHERE customer_id=?",Integer.class,a.id()));assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM customer_address WHERE customer_id=?",Integer.class,a.id()));assertEquals(1,cart(b).path("items").size());assertEquals(1,data(call(b,"GET","/customer/addresses",null)).size());assertEquals(3,jdbc.queryForObject("SELECT quantity FROM sku_inventory WHERE sku_id=?",Integer.class,f.sku()));
+        jdbc.update("DELETE FROM customer_email_token WHERE customer_id=?",a.id());jdbc.update("DELETE FROM customer_mock_email WHERE customer_id=?",a.id());jdbc.update("DELETE FROM customer WHERE id=?",a.id());assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM customer_cart WHERE customer_id=?",Integer.class,a.id()));assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM customer_address WHERE customer_id=?",Integer.class,a.id()));assertEquals(1,cart(b).path("items").size());assertEquals(1,data(call(b,"GET","/customer/addresses",null)).size());assertEquals(3,jdbc.queryForObject("SELECT quantity FROM sku_inventory WHERE sku_id=?",Integer.class,f.sku()));
     }
     @Test void cartCapacityRaceCannotCreateFiftyFirstLine() throws Exception{
         var admin=admin();var f=fixture(admin,10);var c=customer();var ids=new ArrayList<String>();ids.add(f.sku());

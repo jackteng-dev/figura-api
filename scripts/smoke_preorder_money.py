@@ -27,8 +27,8 @@ import concurrent.futures
 admin=login(True);staff=login(False);anon=Client();products=[];batches=[];orders=[]
 def customer():
     c=Client();name='pre_'+uuid.uuid4().hex[:20];password=secrets.token_urlsafe(24)
-    assert c.req('/customer/auth/register','POST',dict(username=name,password=password,displayName='合成預購會員'))[0]==201
-    assert c.req('/customer/auth/login','POST',dict(username=name,password=password,deviceId=str(uuid.uuid4()),rememberMe=False))[0]==200
+    assert c.req('/customer/auth/register','POST',dict(email=name+'@example.test',phone='09%08d'%(uuid.uuid4().int%10**8),password=password))[0]==201
+    assert c.req('/customer/auth/login','POST',dict(username=name+'@example.test',password=password,deviceId=str(uuid.uuid4()),rememberMe=False))[0]==200
     return c
 
 def fixture(capacity=3,seconds=86400):

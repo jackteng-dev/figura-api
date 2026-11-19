@@ -14,11 +14,13 @@ import java.util.*;
 public class FulfillmentService {
  private final FulfillmentMapper fulfillment;private final OrderMapper orders;private final PaymentMapper payments;private final OrderService orderService;private final ReturnMapper returns;private final boolean enabled;
  private final NotificationCapture notifications;
- public FulfillmentService(FulfillmentMapper fulfillment,OrderMapper orders,PaymentMapper payments,OrderService orderService,ReturnMapper returns,NotificationCapture notifications,@Value("${shop.fulfillment.mock-enabled:false}") boolean enabled){this.notifications=notifications;this.fulfillment=fulfillment;this.orders=orders;this.payments=payments;this.orderService=orderService;this.enabled=enabled;this.returns=returns;}
+ private final ShipmentReader shipments;
+ public FulfillmentService(FulfillmentMapper fulfillment,OrderMapper orders,PaymentMapper payments,OrderService orderService,ReturnMapper returns,NotificationCapture notifications,ShipmentReader shipments,@Value("${shop.fulfillment.mock-enabled:false}") boolean enabled){this.shipments=shipments;this.notifications=notifications;this.fulfillment=fulfillment;this.orders=orders;this.payments=payments;this.orderService=orderService;this.enabled=enabled;this.returns=returns;}
  private ResponseStatusException conflict(String message){return new ResponseStatusException(HttpStatus.CONFLICT,message);}
  private void uuid(String id){try{if(!UUID.fromString(id).toString().equals(id))throw new IllegalArgumentException();}catch(IllegalArgumentException e){throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"訂單編號不正確");}}
  private CustomerOrder require(String id){uuid(id);var o=fulfillment.find(id);if(o==null)throw new ResponseStatusException(HttpStatus.NOT_FOUND,"找不到訂單");return o;}
- private boolean ready(CustomerOrder o){return enabled&&"PAID".equals(o.getStatus())&&payments.unresolvedReviews(o.getId())==0&&returns.active(o.getId())==0;}
+ // 合併出貨單內的訂單只能整張出貨單一起出貨（/admin/shipments），不能單筆出貨造成一半寄出
+ private boolean ready(CustomerOrder o){return enabled&&"PAID".equals(o.getStatus())&&payments.unresolvedReviews(o.getId())==0&&returns.active(o.getId())==0&&!shipments.combined("STOCK",o.getId());}
  private Detail view(CustomerOrder o){boolean ready=ready(o);return new Detail(orderService.detail(o.getCustomerId(),o.getId()),enabled,ready&&"UNFULFILLED".equals(o.getFulfillmentStatus()),ready&&"SHIPPED".equals(o.getFulfillmentStatus()));}
  private String filter(String value,Set<String> allowed){if(value==null||value.isEmpty())return null;if(!allowed.contains(value))throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"篩選狀態不正確");return value;}
  @Transactional(readOnly=true) public Page<Summary> list(int page,int pageSize,String status,String fulfillmentStatus){

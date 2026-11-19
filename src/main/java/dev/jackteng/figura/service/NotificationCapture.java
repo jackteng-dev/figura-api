@@ -11,7 +11,7 @@ public class NotificationCapture {
  public NotificationCapture(JdbcTemplate db,ObjectMapper json){this.db=db;this.json=json;}
  @Transactional(propagation=Propagation.MANDATORY)
  public void enqueuePreorder(String customer,dev.jackteng.figura.dto.PreorderOrderPayloads.View order,String kind,String source){
-  if(!Set.of("PREORDER_PLACED","PREORDER_CANCELLED","PREORDER_EXPIRED","PREORDER_PAYMENT_SUCCEEDED","PREORDER_PAYMENT_FAILED","PREORDER_PAYMENT_REVIEW_REQUIRED","PREORDER_REFUNDED","PREORDER_REVIEW_REFUNDED","PREORDER_ALLOCATED","PREORDER_SHIPPED","PREORDER_DELIVERED").contains(kind))throw new IllegalArgumentException("Unknown preorder event");
+  if(!Set.of("PREORDER_PLACED","PREORDER_CANCELLED","PREORDER_EXPIRED","PREORDER_PAYMENT_SUCCEEDED","PREORDER_PAYMENT_FAILED","PREORDER_PAYMENT_REVIEW_REQUIRED","PREORDER_REFUNDED","PREORDER_REVIEW_REFUNDED","PREORDER_ALLOCATED","PREORDER_SHIPPED","PREORDER_DELIVERED","PREORDER_BALANCE_DUE","PREORDER_DELAYED","PREORDER_RESCHEDULED").contains(kind))throw new IllegalArgumentException("Unknown preorder event");
   String payload;try{payload=json.writeValueAsString(Map.of("orderId",order.id(),"eventKind",kind,"orderVersion",order.version(),"orderStatus",order.status(),"fulfillmentStatus",order.fulfillmentStatus(),"totalTwd",order.totalTwd()));}catch(Exception e){throw new IllegalStateException(e);}
   db.update("INSERT INTO notification_outbox(id,event_kind,source_id,preorder_order_id,recipient_ref,payload) VALUES(?,?,?,?,?,?)",UUID.randomUUID().toString(),kind,source,order.id(),customer,payload);
  }
