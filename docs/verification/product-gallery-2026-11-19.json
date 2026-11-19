@@ -1,0 +1,49 @@
+{
+  "date": "2026-11-19",
+  "scope": "new isolated figura-gallery-20261119 Docker project, empty figura_shop_demo, Redis and SeaweedFS; no production writes",
+  "build": "mvn -B -ntp -f work-gallery.pom.xml package (ignored local POM identical except isolated build directory; Java 21)",
+  "maven": {
+    "tests": 324,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 2
+  },
+  "skips": [
+    {
+      "class": "dev.jackteng.figura.InventoryIntegrationTest",
+      "test": "v3ExistingSkuBackfilledWithoutInventingStockOrChangingIdentity",
+      "reason": "Environment variable [SHOP_MIGRATION_FIXTURE_SKU] does not exist"
+    },
+    {
+      "class": "dev.jackteng.figura.ShoppingIntegrationTest",
+      "test": "v4ToV5PreservesCustomerAndSkuAndStartsWithoutFakeShoppingData",
+      "reason": "Environment variable [SHOP_V5_FIXTURE_CUSTOMER] does not exist"
+    }
+  ],
+  "migrationCount": 24,
+  "existingMigrationsUnchanged": true,
+  "browserChecks": 46,
+  "webBuild": "vue-tsc + Vite passed",
+  "pipelineGuardTests": 5,
+  "app": {
+    "source": "0d518b2ce3f530e30835177e65488f880e523c38",
+    "modified": false,
+    "analyze": "No issues",
+    "testsPassed": 27,
+    "testsSkipped": 2,
+    "webReleaseBuild": "passed",
+    "androidIOSDeviceTest": "not run"
+  },
+  "review": {
+    "mode": "Codex CLI read-only static review of supplied complete diffs and new code; native inspection runner unavailable",
+    "findingsFixed": [
+      "server-side actor precondition",
+      "legacy cover removal promotes next image",
+      "fsynced non-overwriting output publication",
+      "atomic staged derivative export"
+    ],
+    "finalVerdict": "No blocking P0/P1/P2 findings in the supplied code"
+  },
+  "deployment": "not merged or deployed; V24 requires server-controlled schema/contract switch",
+  "formats": "API PNG/JPEG responsive variants; local workflow WebP/AVIF/JPEG exports; API WebP/AVIF not implemented"
+}

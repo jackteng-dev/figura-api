@@ -1,5 +1,22 @@
 # Figura（原 ELPSY Shop） 後端交接
 
+## 2026-11-19：商品多圖與 V24（未合併／受控切換前不可 merge）
+
+分支 `codex/product-gallery`，基於遠端 main `6121c3a`；配對 Web `codex/comfyui-product-gallery`。**V24 位於 CD 受保護路徑 `src/main/resources/`，需要作者在伺服器執行受控 schema／contract switch；本輪不 merge、不部署、不操作正式 DB。** V1–V23 bytes 不變。
+
+- 新 `ProductGalleryService`／`GalleryMapper`／`GalleryPayloads` 與 V24 四張 additive 表（gallery、variant、command、gallery_event）。最多六張，用途、完整排序、獨立主圖、替換／移除；舊 cover lazy materialize，Catalog／App 的 image 五欄與單主圖 API 保持相容。新舊 audit 都可讀，沒有刪改歷史 API。
+- 寫入 actor live grant → product → 全域 UUID reservation → cleanup queue；商品版本、主圖、圖組、衍生 metadata 與 audit 同 SQL transaction。新請求必帶 `expectedActorId`，只作 Principal 的交易內身分前置核對，audit actor 仍只取 Principal。PNG／JPEG 來源 bytes 重編碼；S3 PUT 前持久 orphan reservation、清理包含所有 active gallery／variant 引用，故障／回滾不會刪 active 圖。
+- JDK ImageIO 衍生 320／640／1024 寬圖片，不拉伸、不放大；私有 SeaweedFS、不可變 key、來源與衍生 bytes／hash 核對、nosniff／no-store。舊單圖沒有 variants 時仍讀原圖；移除主圖（含 legacy API）遞補排序第一張。
+- 公開 GET `/catalog/products/{id}/image` 只有已上架有效商品圖組；原 `.../image/{imageId}` 增 width 選項。員工沿用固定權限路徑／Cookie／CSRF，不新增任意 URL 授權。JSON REMOVE 用 DELETE 保持獨立 remove grant。完整合約及回退限制見 `docs/PRODUCT_GALLERY_API.md`。
+- **測試／build**：全新 `figura-gallery-20261119` Docker project＋空 figura_shop_demo／獨立 Redis／SeaweedFS，Java 21 完整 `mvn package` **324 項：322 通過、2 舊 migration fixture opt-in skip、0 failures／errors**。保留原單圖測試，新增五項 gallery 測試涵蓋 publication／舊版相容／尺寸／上限／排序／主圖／替換／全球 request ID／併發／CSRF／即時 grant／actor precondition／稽核回滾／active cleanup。V24 實際套用，未更動既有 DB。
+- 本機多個 Spring test contexts 曾耗盡預設 MySQL 連線，僅測試私有環境設 Hikari max=5／minIdle=0 後重跑成功。兩個缺省略過的是 `SHOP_MIGRATION_FIXTURE_SKU` 與 `SHOP_V5_FIXTURE_CUSTOMER` 的既有升級 fixture；Redis 兩項已啟用並通過。
+- Maven 預設 target JAR 被原本本機 API 鎖住，首輪 repackage 失敗；後改 ignored `work-gallery.pom.xml`（只改 build.directory，來源／依賴／測試不變）輸出到 `work/gallery-target`，完整 package 成功。已由 origin/main 的隔離建置還原原 `target` 可執行 JAR，暫用 worktree 已移除，既有 API HTTP 200。沒有重啟或升級原有 demo API／DB。
+- **Web／App**：Web production build、46 項真瀏覽器本機整合通過；兩款各四張主圖裁切候選經實際 API 儲存與顧客詳情展示；新側面／情境有漂移全部退回，作者尚未 signoff。App 未改，遠端 main analyze／27 tests＋2 skip／Web release build 通過，原 image 路徑相容；不宣稱 Android／iOS 裝置完成。
+- **Codex 唯讀 review**：提供完整 diff／新增程式作靜態審查，修正 actor 競爭、legacy 主圖遞補與 Web pipeline 兩項中斷恢復，共四項 P2；覆審無 P0／P1／P2。CLI 原 inspection tool 無法啟動的限制已如實記錄，審查不冒充測試。
+- 證據：`docs/verification/product-gallery-2026-11-19.json`。Raw logs／密碼／測試產物在忽略的 work。本輪 WebP／AVIF 只在 ComfyUI 本機匯出／比較頁，API 仍 PNG／JPEG；沒有加入伺服器外部編碼器。正式 CWV、真機、正式圖片採用及 schema switch 未做。
+- 下一步：作者簽核圖組；安排受控切換與回退演練，先暫停圖片寫入／舊 cleanup（舊程式不知道 gallery／variant 引用）。PR 保留未合併狀態；不得自動 merge 或以一般 CD 直接套 V24。
+
+
 
 ## 2026-11-18：Phase 5 配送：運費、宅配／超商、合併／分開出貨、出貨單（V23，含 schema 變更）
 

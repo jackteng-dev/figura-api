@@ -15,7 +15,7 @@ import java.util.List;
  @Insert("INSERT INTO product_image_cleanup(object_key) VALUES(#{key}) ON DUPLICATE KEY UPDATE object_key=object_key") void queue(String key);
  @Select("SELECT object_key FROM product_image_cleanup WHERE object_key=#{key} FOR UPDATE") String lockQueue(String key);
  @Select("SELECT object_key FROM product_image_cleanup WHERE not_before<=CURRENT_TIMESTAMP(6) ORDER BY not_before,object_key LIMIT 1 FOR UPDATE SKIP LOCKED") String nextCleanup();
- @Select("SELECT COUNT(*) FROM product_image_cover c JOIN product_image_asset a ON a.id=c.image_id WHERE a.object_key=#{key}") int referenced(String key);
+ @Select("SELECT (SELECT COUNT(*) FROM product_image_cover c JOIN product_image_asset a ON a.id=c.image_id WHERE a.object_key=#{key}) + (SELECT COUNT(*) FROM product_image_gallery g JOIN product_image_asset a ON a.id=g.image_id WHERE a.object_key=#{key}) + (SELECT COUNT(*) FROM product_image_variant v WHERE v.object_key=#{key} AND (EXISTS(SELECT 1 FROM product_image_gallery g WHERE g.image_id=v.image_id) OR EXISTS(SELECT 1 FROM product_image_cover c WHERE c.image_id=v.image_id)))") int referenced(String key);
  @Delete("DELETE FROM product_image_cleanup WHERE object_key=#{key}") void unqueue(String key);
  @Update("UPDATE product_image_cleanup SET attempts=attempts+1,not_before=CURRENT_TIMESTAMP(6)+INTERVAL 5 MINUTE WHERE object_key=#{key}") void retry(String key);
 }
