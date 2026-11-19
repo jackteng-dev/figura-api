@@ -49,7 +49,7 @@ public class SecurityConfig {
                     response.setStatus(403); response.setContentType("application/json"); response.setCharacterEncoding("UTF-8");
                     response.getWriter().write("{\"code\":1,\"errorCode\":\"CSRF_INVALID\",\"message\":\"操作驗證失效\"}");
                 }))
-                .authorizeHttpRequests(auth -> auth.requestMatchers(org.springframework.http.HttpMethod.GET,"/api/catalog/preorders","/api/catalog/preorders/*","/api/catalog/products","/api/catalog/products/*","/api/catalog/products/*/image/*").permitAll()
+                .authorizeHttpRequests(auth -> auth.requestMatchers(org.springframework.http.HttpMethod.GET,"/api/catalog/preorders","/api/catalog/preorders/*","/api/catalog/products","/api/catalog/products/*","/api/catalog/products/*/image/*","/api/catalog/products/*/image").permitAll()
                         .requestMatchers("/api/admin/login", "/api/admin/logout", "/api/auth/refresh", "/api/auth/csrf",
                         "/api/customer/auth/register", "/api/customer/auth/login", "/api/customer/auth/refresh", "/api/customer/auth/logout",
                         "/api/customer/auth/email/verify", "/api/customer/auth/password/forgot", "/api/customer/auth/password/reset").permitAll()
