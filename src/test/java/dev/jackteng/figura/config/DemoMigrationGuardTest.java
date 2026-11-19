@@ -11,7 +11,7 @@ import static org.mockito.Mockito.*;
 class DemoMigrationGuardTest {
     @Test void wrongDatabaseRefusesBeforeMigration() throws Exception { check("original_shop", false); }
     @Test void exactDemoDatabaseAllowsMigration() throws Exception { check("figura_shop_demo", true); }
-    @Test void legacyDemoDatabaseNameStillAllowedDuringRename() throws Exception { check("elpsy_shop_demo", true); }
+    @Test void preRenameDatabaseNameRefused() throws Exception { check("elpsy_shop_demo", false); }
     @Test void metadataFailureDoesNotMigrate() throws Exception {
         var flyway=mock(Flyway.class);var config=mock(Configuration.class);var source=mock(DataSource.class);
         when(flyway.getConfiguration()).thenReturn(config);when(config.getDataSource()).thenReturn(source);when(source.getConnection()).thenThrow(new java.sql.SQLException());

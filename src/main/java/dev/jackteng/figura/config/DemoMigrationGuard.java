@@ -8,8 +8,8 @@ import org.springframework.context.annotation.Profile;
 @Configuration
 @Profile("demo")
 public class DemoMigrationGuard {
-    /** Isolated demo databases. elpsy_shop_demo is the pre-rename name, accepted until the server DB is renamed. */
-    public static final java.util.Set<String> DEMO_DATABASES = java.util.Set.of("figura_shop_demo", "elpsy_shop_demo");
+    /** Isolated demo database (the pre-rename name elpsy_shop_demo was removed from the server on 2026-11-19). */
+    public static final java.util.Set<String> DEMO_DATABASES = java.util.Set.of("figura_shop_demo");
 
     @Bean FlywayMigrationStrategy guardedDemoMigration() {
         return flyway -> {
