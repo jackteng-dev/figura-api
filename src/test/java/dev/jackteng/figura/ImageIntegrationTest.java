@@ -106,4 +106,57 @@ class ImageIntegrationTest {
         var c=staff(false);var p=fixture(c);jdbc.update("DELETE FROM role_permission WHERE role_id=2 AND permission_id=56");try{assertEquals(403,upload(c,p,input(p)).getResponse().getStatus());}finally{jdbc.update("INSERT INTO role_permission VALUES(2,56)");}assertEquals(0,events(p));assertEquals(MigrationCount.files(),jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1",Integer.class));
     }
     private List<Integer> race(Callable<Integer> a,Callable<Integer> b) throws Exception{var pool=Executors.newFixedThreadPool(2);var start=new CountDownLatch(1);try{var one=pool.submit(()->{start.await();return a.call();});var two=pool.submit(()->{start.await();return b.call();});start.countDown();return List.of(one.get(30,TimeUnit.SECONDS),two.get(30,TimeUnit.SECONDS));}finally{pool.shutdownNow();}}
+    private JsonNode gallery(Client c,JsonNode p) throws Exception{return data(call(c,"GET",path(p)+"?gallery=true",null));}
+    private Map<String,Object> addInput(Client c,JsonNode p) throws Exception{var body=input(p);body.put("expectedActorId",data(call(c,"GET","/auth/me",null)).path("id").asInt());body.put("operation","ADD");body.put("type","DETAIL");return body;}
+    private JsonNode imageCommand(Client c,JsonNode p,String action,String image,List<String> order,int expected) throws Exception{
+        var body=new HashMap<String,Object>();body.put("requestId",UUID.randomUUID().toString());body.put("expectedVersion",p.path("version").asInt());body.put("action",action);body.put("expectedActorId",data(call(c,"GET","/auth/me",null)).path("id").asInt());if(image!=null)body.put("imageId",image);if(order!=null)body.put("imageIds",order);
+        var r=call(c,action.equals("REMOVE")?"DELETE":"POST",path(p)+(action.equals("REMOVE")?"?gallery=true":""),body);assertEquals(expected,r.getResponse().getStatus(),r.getResponse().getContentAsString());return data(r);
+    }
+    @Test void galleryLegacyCompatibilityResponsiveImagesAndPublicationGuard() throws Exception{
+        var c=staff(true);var p=fixture(c);
+        assertEquals(200,upload(c,p,input(p)).getResponse().getStatus());p=fresh(c,p);String legacy=p.path("image").path("id").asText();
+        var body=addInput(c,p);assertEquals(200,upload(c,p,body,png(960,960,0xff778899),"image/png").getResponse().getStatus());p=fresh(c,p);
+        assertEquals(legacy,p.path("image").path("id").asText());var g=gallery(c,p);assertEquals(2,g.path("images").size());var next=g.path("images").get(1);String image=next.path("id").asText();assertEquals(2,next.path("variants").size());assertFalse(next.has("objectKey"));
+        assertEquals(404,call(null,"GET","/catalog/products/"+p.path("id").asText()+"/image",null).getResponse().getStatus());
+        p=data(publish(c,p,true));var pub=call(null,"GET","/catalog/products/"+p.path("id").asText()+"/image",null);assertEquals(200,pub.getResponse().getStatus());assertEquals(2,data(pub).size());
+        String content="/catalog/products/"+p.path("id").asText()+"/image/"+image;var small=call(null,"GET",content+"?width=320",null);assertEquals(200,small.getResponse().getStatus());assertEquals(320,javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(small.getResponse().getContentAsByteArray())).getWidth());assertEquals("no-store",small.getResponse().getHeader("Cache-Control"));assertEquals(404,call(null,"GET",content+"?width=999",null).getResponse().getStatus());
+        assertEquals(409,upload(c,p,addInput(c,p)).getResponse().getStatus());p=data(publish(c,p,false));assertEquals(404,call(null,"GET",content,null).getResponse().getStatus());
+        imageCommand(c,p,"COVER",image,null,200);p=fresh(c,p);assertEquals(image,p.path("image").path("id").asText());imageCommand(c,p,"REORDER",null,List.of(image,legacy),200);p=fresh(c,p);assertEquals(image,gallery(c,p).path("images").get(0).path("id").asText());
+        imageCommand(c,p,"REMOVE",image,null,200);p=fresh(c,p);assertEquals(legacy,p.path("image").path("id").asText());assertEquals(404,call(c,"GET",path(p)+"/"+image,null).getResponse().getStatus());
+        assertEquals(200,upload(c,p,input(p)).getResponse().getStatus());p=fresh(c,p);assertEquals(1,gallery(c,p).path("images").size());assertEquals(404,call(c,"GET",path(p)+"/"+legacy,null).getResponse().getStatus());
+    }
+    @Test void galleryIdempotencyLimitReplacementAndInvalidCommands() throws Exception{
+        var c=staff(true);var p=fixture(c);var first=addInput(c,p);assertEquals(200,upload(c,p,first).getResponse().getStatus());var replay=upload(c,p,first);assertEquals(200,replay.getResponse().getStatus());assertTrue(data(replay).path("replayed").asBoolean());
+        first.put("type","FACE");assertEquals(409,upload(c,p,first).getResponse().getStatus());p=fresh(c,p);
+        for(int n=1;n<6;n++){assertEquals(200,upload(c,p,addInput(c,p)).getResponse().getStatus());p=fresh(c,p);}
+        assertEquals(409,upload(c,p,addInput(c,p)).getResponse().getStatus());var g=gallery(c,p);String image=g.path("images").get(0).path("id").asText();var replacement=addInput(c,p);replacement.put("operation","REPLACE");replacement.put("imageId",image);assertEquals(200,upload(c,p,replacement).getResponse().getStatus());p=fresh(c,p);assertEquals(6,gallery(c,p).path("images").size());assertEquals(404,call(c,"GET",path(p)+"/"+image,null).getResponse().getStatus());
+        imageCommand(c,p,"REORDER",null,List.of(p.path("image").path("id").asText()),409);imageCommand(c,p,"COVER",UUID.randomUUID().toString(),null,404);
+        var other=fixture(c);var collision=addInput(c,other);collision.put("requestId",replacement.get("requestId"));assertEquals(409,upload(c,other,collision).getResponse().getStatus());
+        var legacy=input(other);legacy.put("requestId",replacement.get("requestId"));assertEquals(409,upload(c,other,legacy).getResponse().getStatus());
+        var invalid=addInput(c,other);invalid.put("type","OTHER");assertEquals(400,upload(c,other,invalid).getResponse().getStatus());
+    }
+    @org.springframework.boot.test.mock.mockito.SpyBean dev.jackteng.figura.mapper.GalleryMapper galleryMapper;
+    @Test void galleryAuditFailureRollsBackAndRemoveChecksLivePermission() throws Exception{
+        var c=staff(false);var p=fixture(c);var body=addInput(c,p);
+        org.mockito.Mockito.doThrow(new RuntimeException("synthetic audit failure")).when(galleryMapper).append(org.mockito.ArgumentMatchers.any());
+        try{assertEquals(500,upload(c,p,body).getResponse().getStatus());}finally{org.mockito.Mockito.reset(galleryMapper);}
+        assertEquals(0,fresh(c,p).path("version").asInt());assertEquals(0,gallery(c,p).path("images").size());assertEquals(200,upload(c,p,body).getResponse().getStatus());p=fresh(c,p);String image=p.path("image").path("id").asText();
+        jdbc.update("DELETE FROM role_permission WHERE role_id=2 AND permission_id=57");try{imageCommand(c,p,"REMOVE",image,null,403);}finally{jdbc.update("INSERT INTO role_permission VALUES(2,57)");}
+        assertEquals(1,gallery(c,p).path("images").size());var missingCsrf=mvc.perform(delete("/figura/api"+path(p)+"?gallery=true").contextPath("/figura").servletPath("/api"+path(p)).cookie(c.cookies().toArray(Cookie[]::new)).contentType("application/json").content(json.writeValueAsBytes(Map.of("requestId",UUID.randomUUID().toString(),"expectedVersion",p.path("version").asInt(),"action","REMOVE","imageId",image)))).andReturn();assertEquals(403,missingCsrf.getResponse().getStatus());
+        dueOwn();collector.run();assertEquals(200,call(c,"GET",path(p)+"/"+image,null).getResponse().getStatus());
+    }
+    @Test void galleryConcurrentAddAndLegacyRequestCollisionHaveOneWinner() throws Exception{
+        var c=staff(true);var p=fixture(c);var one=addInput(c,p);var two=addInput(c,p);assertEquals(Set.of(200,409),new HashSet<>(race(()->upload(c,p,one).getResponse().getStatus(),()->upload(c,p,two).getResponse().getStatus())));assertEquals(1,gallery(c,p).path("images").size());
+        var a=fixture(c);var b=fixture(c);var legacy=input(a);var modern=addInput(c,b);modern.put("requestId",legacy.get("requestId"));assertEquals(Set.of(200,409),new HashSet<>(race(()->upload(c,a,legacy).getResponse().getStatus(),()->upload(c,b,modern).getResponse().getStatus())));
+    }
+
+    @Test void galleryActorPreconditionAndLegacyRemovePromotion() throws Exception{
+        var a=staff(true);var b=staff(false);var p=fixture(a);var body=addInput(a,p);
+        assertEquals(409,upload(b,p,body).getResponse().getStatus());assertEquals(0,gallery(a,p).path("images").size());
+        assertEquals(200,upload(a,p,body).getResponse().getStatus());p=fresh(a,p);assertEquals(200,upload(a,p,addInput(a,p)).getResponse().getStatus());p=fresh(a,p);
+        var g=gallery(a,p);String next=g.path("images").get(1).path("id").asText();var remove=Map.of("requestId",UUID.randomUUID().toString(),"expectedVersion",p.path("version").asInt());
+        assertEquals(200,call(a,"DELETE",path(p),remove).getResponse().getStatus());p=fresh(a,p);assertEquals(next,p.path("image").path("id").asText());assertEquals(1,gallery(a,p).path("images").size());
+        var wrong=new HashMap<String,Object>(Map.of("requestId",UUID.randomUUID().toString(),"expectedVersion",p.path("version").asInt(),"expectedActorId",data(call(b,"GET","/auth/me",null)).path("id").asInt(),"action","COVER","imageId",next));assertEquals(409,call(a,"POST",path(p),wrong).getResponse().getStatus());
+    }
+
 }
