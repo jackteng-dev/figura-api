@@ -15,7 +15,8 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** Commerce V2 Phase 3：收藏、商品提醒（狀態轉換才通知、不重複）、通知偏好、站內通知匣與 mock Email。 */
-@SpringBootTest(properties = {"shop.orders.expiry-delay-ms=600000", "shop.notifications.mock-enabled=true", "MOCK_EMAIL_ENABLED=true"})
+// 與 CustomerEmailPhoneIntegrationTest 共用 context（CI MySQL 連線數有限）；mock 派送依環境 MOCK_NOTIFICATIONS_ENABLED
+@SpringBootTest(properties = "MOCK_EMAIL_ENABLED=true")
 @AutoConfigureMockMvc(print = MockMvcPrint.NONE) @ActiveProfiles("demo")
 @EnabledIfEnvironmentVariable(named = "SHOP_MYSQL_INTEGRATION", matches = "true")
 class EngagementIntegrationTest extends ShopIntegrationSupport {
@@ -86,10 +87,12 @@ class EngagementIntegrationTest extends ShopIntegrationSupport {
         var other = customer();
         assertEquals(0, data(ok(other, "GET", "/customer/notifications", null, 200)).path("total").asInt());
         assertEquals(0, data(ok(other, "POST", "/customer/notifications/read", Map.of("ids", List.of(restock.path("id").asText())), 200)).path("updated").asInt());
-        // 派送成功 → 依偏好寫入 mock Email（不實際寄出）
+        // 派送成功 → 依偏好寫入 mock Email（不實際寄出）；需環境開啟 mock 通知派送
+        if ("true".equals(System.getenv("MOCK_NOTIFICATIONS_ENABLED"))) {
         var box = data(ok(a, "GET", "/admin/notifications/" + restock.path("id").asText(), null, 200)).path("message");
         ok(a, "POST", "/admin/notifications/" + restock.path("id").asText() + "/mock-dispatch", Map.of("requestId", uuid(), "expectedVersion", box.path("version").asInt(), "note", "測試派送", "mode", "SUCCESS"), 200);
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM customer_mock_email WHERE customer_id=? AND purpose='NOTIFY' AND link=?", Integer.class, c.id(), "/shop/products/" + f.product()));
+        }
         // 標記已讀
         var read = data(ok(c, "POST", "/customer/notifications/read", Map.of("ids", List.of(restock.path("id").asText())), 200));
         assertEquals(1, read.path("updated").asInt()); assertEquals(2, read.path("unread").asInt());

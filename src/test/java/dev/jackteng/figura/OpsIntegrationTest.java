@@ -18,7 +18,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 /** Commerce V2 Phase 7：員工 TOTP、營運報表（模擬與真實分開）、低庫存、營運狀態。 */
-@SpringBootTest(properties = {"shop.orders.expiry-delay-ms=600000", "MFA_ENCRYPTION_KEY=test-only-mfa-encryption-key-0123456789"})
+// MFA 測試金鑰在 src/test/resources/application.properties；屬性與其他測試相同以共用 context
+@SpringBootTest(properties = "shop.orders.expiry-delay-ms=600000")
 @AutoConfigureMockMvc(print = MockMvcPrint.NONE) @ActiveProfiles("demo")
 @EnabledIfEnvironmentVariable(named = "SHOP_MYSQL_INTEGRATION", matches = "true")
 class OpsIntegrationTest extends ShopIntegrationSupport {
