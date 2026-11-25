@@ -96,7 +96,7 @@
 | P4 SEO／GEO | SSI head／body、sitemap、robots、指南 | head 管理、SSI 標記、指南頁 | — | web docs/SEO_DEPLOYMENT |
 | P5 合併與倉庫 | V28、合併、暫存、提醒、運費調整 | 我的出貨、後台倉庫、運費調整 | 我的出貨 | WAREHOUSE_API |
 | P6 客服與政策 | V29、四眼發布、客服單、測試物流追蹤 | 政策頁、客服中心、後台頁面與客服、追蹤 | 客服、追蹤、政策頁 | SUPPORT_API |
-| P7 安全與營運 | V30、員工 TOTP、報表、低庫存、營運狀態、錯誤代碼 | 登入第二步、帳號安全、報表、營運狀態 | —（員工功能只在 Web） | OPS_SECURITY |
+| P7 安全與營運 | V30–V31、員工**強制** TOTP（首次登入綁定、備援碼、管理員重設）、報表、低庫存、營運狀態、錯誤代碼 | 強制綁定流程、驗證碼／備援碼登入、帳號安全、重設雙因素、報表、營運狀態 | —（員工功能只在 Web） | OPS_SECURITY |
 
 ## 7. 待啟用清單（需外部服務或作者決定）
 
@@ -110,7 +110,7 @@
 | 政策內容 | 8 個空白草稿 | 作者撰寫，經另一位員工審核發布 |
 | 倉庫期限與逾期政策 | 60 天（測試值），逾期只標示 | 作者核定 |
 | 運費費率 | 測試值 | 作者核定 |
-| 員工 MFA | 自願啟用 | 正式設定 `MFA_ENCRYPTION_KEY` 並離線保存；是否強制由作者決定 |
+| 員工 MFA（強制） | 未設定金鑰時員工無法登入（不降級） | **部署前必設** `MFA_ENCRYPTION_KEY` 並離線保存；部署後先讓兩位管理員完成綁定 |
 | 排程 | 提醒掃描、倉庫提醒、通知 worker 預設關閉 | `shop.product-alerts.scanner-enabled`、`shop.warehouse.reminder-enabled`、`shop.notifications.worker-enabled` |
 | 備份 | 文件與指令（OPS_SECURITY.md） | 正式備份目的地、排程與還原演練 |
 | 第三方登入、3D／AR | 不在本次範圍 | — |

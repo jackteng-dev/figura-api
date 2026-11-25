@@ -1,5 +1,16 @@
 # Figura（原 ELPSY Shop） 後端交接
 
+## 2026-11-25：員工後台強制雙因素（V31，併入 PR #18，未合併）
+
+- **政策**：系統管理員、店長、所有員工都必須綁定 TOTP；顧客不受影響。密碼登入**一律不發 session**：已綁定 → challenge（TOTP 或一次性備援碼）；未綁定 → 綁定 token → `/admin/login/mfa/setup`、`/enroll` 完成後才發 session，並回傳 10 組只顯示一次的備援碼。
+- **防繞過**：JWT 新增 `mfa=TOTP` 標記，`authenticate`／`refresh` 都要求；部署前的舊 session 全部失效。綁定 token 與 challenge 綁定簽發時的 `auth_version`，重設、停用或權限變更後舊流程失效；發 session 前再核對版本與綁定狀態。自行停用 MFA 的端點已移除。
+- **金鑰未設定**：員工登入回 503 並寫 ERROR 日誌，不降級；`/admin/ops/status` 顯示 `mfaAvailable`、`staffActive`、`staffMfaEnrolled`。
+- **復原**：備援碼（HMAC 保存、以 TOTP 重新產生）；管理員重設他人 MFA（權限 `access.mfa.reset`，不可重設自己，撤銷對方 session，稽核 actor／原因，requestId 冪等）；最後一位管理員遺失時的 DB 程序見 `docs/OPS_SECURITY.md`。
+- **防暴力與稽核**：token／challenge 各 5 次、帳號 15 分鐘 10 次（含重新產生備援碼端點），Redis Lua 原子扣次；失敗稽核獨立交易保存。
+- **其他**：不存在的 API 路徑改回 404，不再被記成伺服器錯誤。
+- **測試**：新增 `StaffLogin` 測試 helper，讓所有既有整合測試走真實綁定流程（測試前在隔離 DB 清除該員工 MFA，正式程式無任何略過路徑）；MFA 整合測試 5 項（強制綁定、每個 session 驗證、備援碼一次性、併發與帳號上限、舊 session 失效、重設撤銷 session 與舊 token、顧客不受影響）＋單元測試 3 項（未設定金鑰不降級、缺 MFA 標記拒絕）。全套結果見 PR。Codex 唯讀審查找到 3 項（重設競態、舊 token、備援碼端點猜碼）已修正並加測試。
+- **部署注意**：部署前必設 `MFA_ENCRYPTION_KEY` 並離線保存；部署後所有員工需重新登入並綁定，先讓兩位管理員完成綁定。首次登入綁定的風險（密碼外洩者可能搶先綁定）已寫入文件，部署後應儘快完成全員綁定。
+
 ## 2026-11-25：Commerce V2 Phase 1–7（V25–V30，未合併，需受控切換）
 
 分支 `feat/commerce-v2-specs`（Web／App 同名）。計畫、完成狀態與待啟用清單：`docs/COMMERCE_V2_PLAN.md` §6–7。契約：`CATALOG_SEARCH_API`、`ENGAGEMENT_API`、`WAREHOUSE_API`、`SUPPORT_API`、`OPS_SECURITY`，Web `docs/SEO_DEPLOYMENT.md`。**V25–V30 位於受保護路徑，需作者受控切換；不 merge、不部署、未碰正式 DB。** V1–V24 bytes 不變。

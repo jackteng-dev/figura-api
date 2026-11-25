@@ -1,12 +1,43 @@
-# 後台安全與營運（Commerce V2 Phase 7，V30）
+# 後台安全與營運（Commerce V2 Phase 7，V30–V31）
 
-## 員工雙因素（TOTP）
+## 員工雙因素（TOTP，強制，V30＋V31）
 
-- 自願啟用：未啟用者登入不變。`GET /admin/mfa` 狀態；`POST /admin/mfa/setup` 產生密鑰（回 `secret` 與 `otpauthUri`，用 Google Authenticator 等掃描）；`POST /admin/mfa/confirm {code}` 啟用；`POST /admin/mfa/disable {code}` 停用。任何已登入員工都能管理自己的 MFA，不需額外權限。
-- 啟用後 `POST /admin/login` 密碼正確只回 `{mfaRequired: true, mfaChallenge}`、**不發 session**；`POST /admin/login/mfa {challenge, code}` 驗證後才發 Cookie。challenge 5 分鐘有效、一次性、錯 5 次失效；同一時間窗的驗證碼不能重用；帳號狀態與權限在第二步重新核對。
-- 密鑰以 AES-GCM 加密存在 `staff_mfa.secret_enc`，加密金鑰 `MFA_ENCRYPTION_KEY`（至少 32 字元）只放私有環境。**未設定時無法啟用 MFA**（`available=false`）。金鑰遺失或更換會讓所有已啟用者無法驗證：只能由 DBA 在受控程序中刪除對應 `staff_mfa` 列，讓該員工重新設定。
-- 稽核：`staff_mfa_event`（SETUP／ENABLE／DISABLE／LOGIN_OK／LOGIN_FAIL）。
-- 尚未做（待作者決定）：強制特定角色必須啟用、備用救援碼、顧客 MFA。
+**政策**：所有員工（系統管理員、店長、一般員工）都必須綁定驗證器 App；顧客（`/api/customer`、`/api/mobile/customer`）完全不受影響。
+
+### 登入流程
+
+| 步驟 | API | 結果 |
+|---|---|---|
+| 1 密碼 | `POST /admin/login`（帳號、密碼、deviceId） | **不發 session**。已綁定 → `{mfaRequired, mfaChallenge}`（5 分鐘）；未綁定 → `{mfaSetupRequired, mfaSetupToken}`（15 分鐘） |
+| 2a 驗證 | `POST /admin/login/mfa {challenge, code}` | `code` 為 6 位數 TOTP 或一組備援碼（`XXXXX-XXXXX`）→ 發 session |
+| 2b 綁定 | `POST /admin/login/mfa/setup {setupToken}` → `{secret, otpauthUri}`；`POST /admin/login/mfa/enroll {setupToken, code}` | 驗證碼正確 → 啟用、發 session，回傳 10 組只顯示一次的 `backupCodes` |
+
+- session 的 JWT 帶 `mfa=TOTP` 標記；`authenticate` 與 `refresh` 都要求這個標記。**部署前發出的 session 沒有標記，部署後一律失效**，員工需重新登入。
+- 綁定 token 與 challenge 是不同的 Redis key 前綴，不能互用；都在第一次成功時原子消耗。
+- 每個 token／challenge 最多 5 次嘗試（Redis Lua 原子扣次，期限不延長）；帳號 15 分鐘內最多 10 次，超過 429，連正確驗證碼也拒絕。同一時間窗的 TOTP 只能用一次。失敗、成功、綁定、備援碼使用、重設都寫 `staff_mfa_event`（失敗稽核在獨立交易，不會隨例外回滾）。
+- 沒有任何不經第二因素就發 session 的 API；自行停用 MFA 的端點已移除。
+
+### 金鑰未設定
+
+`MFA_ENCRYPTION_KEY`（≥32 字元）未設定時：員工登入回 **503「後台雙因素驗證尚未設定，暫停員工登入」**，啟動時寫 ERROR 日誌，`/admin/ops/status` 的 `mfaAvailable=false`。**不會降級為單因素。** 顧客購物與登入不受影響。
+
+### 備援碼與復原
+
+- 綁定時產生 10 組一次性備援碼，只存 HMAC-SHA256（金鑰衍生自 `MFA_ENCRYPTION_KEY`）。已登入員工可在「帳號安全」以目前 TOTP 重新產生（舊碼全部失效）。
+- 遺失手機：用備援碼登入，再到帳號安全重新產生備援碼；換手機需請管理員重設。
+- 手機與備援碼都遺失：有 `access.mfa.reset` 權限的管理員在「員工管理」按「重設雙因素」（`POST /admin/access/staff/{id}/mfa/reset {requestId, note}`）。刪除對方密鑰與備援碼、`auth_version+1` 立即撤銷對方所有 session，對方下次登入重新綁定。**不能重設自己**；同 requestId 冪等；寫稽核（actor、原因）。
+- **最後一位管理員也遺失**（沒有其他人能重設）：由 DBA 在受控程序中處理——備份後在 DB 執行 `DELETE FROM staff_mfa_backup_code WHERE user_id=?; DELETE FROM staff_mfa WHERE user_id=?; UPDATE user SET auth_version=auth_version+1 WHERE id=?;`，並在變更紀錄寫明原因。建議至少維持兩位具重設權限的管理員。
+
+### 部署與避免鎖死
+
+1. 部署前在私有 env 設定 `MFA_ENCRYPTION_KEY`（`openssl rand -base64 48`），**同時離線保存一份**（遺失或更換 = 所有人的密鑰與備援碼失效，只能逐一重設）。
+2. 部署後所有既有員工的 session 失效；每位員工第一次以密碼登入會直接進入綁定畫面，**不會被鎖在外面**。
+3. 部署後立即讓兩位管理員先完成綁定並保存備援碼，再通知其他員工。
+4. 追蹤 `/admin/ops/status` 的 `staffActive` 與 `staffMfaEnrolled`。
+5. 風險說明：綁定採「首次登入綁定」，尚未綁定的帳號若密碼外洩，持有密碼者可能搶先綁定。因此部署後應儘快完成所有員工綁定；有疑慮的帳號先重設密碼與 MFA。
+6. 回退：程式回退到不強制 MFA 的版本前，須先評估安全影響；V31 只新增資料表與權限，回退程式不需動 schema。
+
+權限：`access.mfa.reset`（285）預設只給角色 1（系統管理員／店長）。
 
 ## 會員／員工隔離（現況確認）
 
@@ -62,7 +93,7 @@ Redis 只存 session 與節流計數，不需備份；還原後所有人需重�
 |---|---|---|
 | `DB_PASSWORD`、`REDIS_PASSWORD` | 資料庫／Redis | 主機私有 env（不進 Git） |
 | JWT 金鑰（員工、顧客、App） | session 簽章 | 私有 env；更換會讓所有人重新登入 |
-| `MFA_ENCRYPTION_KEY` | TOTP 密鑰加密 | 私有 env；**不可遺失**，需另行離線保存 |
+| `MFA_ENCRYPTION_KEY` | TOTP 密鑰加密、備援碼 HMAC | 私有 env；**必填**（未設定員工無法登入）；**不可遺失**，需另行離線保存 |
 | mock 付款 HMAC、綠界金鑰 | 付款通知驗證 | 私有 env |
 | S3（SeaweedFS）存取金鑰 | 商品圖片 | images initializer 產生的私有 env |
 
