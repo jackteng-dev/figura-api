@@ -10,7 +10,7 @@
 - **P5（V28）**：出貨單合併（只搬 shipment_item，運費只減不增，差額 `shipping_adjustment` 待審）、私人倉庫暫存（暫存中不可出貨，單筆端點也擋）、到期提醒、員工解除／延長、運費調整審核（CREDIT_MOCK 只改狀態）。
 - **P6（V29）**：政策頁草稿→送審→**發布者不可是最後編輯者**；8 個空白草稿，未發布公開端點不回草稿（標題用固定名稱）。客服單（內部備註不外露、關聯訂單須本人）、測試物流追蹤與到店／異常通知、`CarrierAdapter` 接入點。
 - **P7（V30）**：員工 TOTP（自願、AES-GCM 加密、challenge 原子扣次數與一次性消耗、帳號層級節流、失敗稽核）、銷售報表（模擬／綠界測試／真實分開，真實營收 0）、低庫存、營運狀態、未處理例外錯誤代碼與 ERROR 日誌（原本 500 不記錄）。
-- **測試**：新增 ProductSpecs 4、CatalogSearch 2、Engagement 3、Seo 2、Warehouse 2、Support 3、Ops 2。全套 **342 項：0 failures、2 errors（`StaffAccessIntegrationTest`，本機 DB 角色數既有問題）**。本機測試環境需 `MOCK_NOTIFICATIONS_ENABLED=true` 與 Hikari 上限（`SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=4`、`MINIMUM_IDLE=0`，已寫入忽略的 `work/test-env.sh`），否則通知測試 404、多個 context 會 Too many connections。測試 DB 先前失敗殘留的 34 筆 1990 年 outbox 合成資料已延後到 2099，才讓 worker 測試通過。
+- **測試**：新增 ProductSpecs 4、CatalogSearch 2、Engagement 3、Seo 2、Warehouse 2、Support 3、Ops 2。全套 **342 項：0 failures、2 errors（`StaffAccessIntegrationTest`，本機 DB 角色數既有問題）**。本機測試環境需 `MOCK_NOTIFICATIONS_ENABLED=true` ，否則通知測試 404。測試連線池上限（每個快取 context 4 條）與 MFA 測試金鑰放在 `src/test/resources/application.properties`；CI 曾因多個 context 耗盡 MySQL 連線而失敗，已修正，GitHub `verify` 通過。測試 DB 先前失敗殘留的 34 筆 1990 年 outbox 合成資料已延後到 2099，才讓 worker 測試通過。
 - **Codex 唯讀審查**：P1–2 六項、P3–7 六項（MFA 併發繞過 P1、MFA setup 競態、提醒與客服回覆死鎖、草稿標題外洩、失敗稽核回滾）全部修正並加測試；覆審再指出帳號層級節流可被併發繞過，已改為 Redis 原子先保留額度再核對並加測試。
 - **本機 demo**：DB 已到 V30，API 以新 jar 執行於 19092；經 Web 代理驗證收藏／提醒／通知、報表（真實營收 0）、低庫存、營運狀態、政策頁未發布、員工登入（未啟用 MFA）不變。本機未設 `MFA_ENCRYPTION_KEY`，MFA 顯示不可用屬預期。
 - **未完成／限制**：正式金流、Email、物流 API、Search Console、nginx SSI（部署契約）、政策內容、倉庫與運費政策、備份排程皆列待啟用；新後台頁未以員工帳號在瀏覽器實際點過；App 未做真機；`StaffAccessIntegrationTest` 2 項為本機 DB 角色數既有問題。
