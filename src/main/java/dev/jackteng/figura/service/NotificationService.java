@@ -14,11 +14,12 @@ import java.time.LocalDateTime;
 import java.util.*;
 @Service
 public class NotificationService {
- private final JdbcTemplate db;private final FulfillmentMapper auth;private final MockNotificationGateway gateway;private final boolean enabled;
- public NotificationService(JdbcTemplate db,FulfillmentMapper auth,MockNotificationGateway gateway,@Value("${shop.notifications.mock-enabled:false}") boolean enabled){this.db=db;this.auth=auth;this.gateway=gateway;this.enabled=enabled;}
- private record Box(String id,String kind,String order,String payload,String status,int version,int attempts,int cycle,LocalDateTime next,String error,LocalDateTime sent,LocalDateTime created) {}
+ private final JdbcTemplate db;private final FulfillmentMapper auth;private final MockNotificationGateway gateway;private final boolean enabled;private final NotificationEmailer emailer;
+ public NotificationService(JdbcTemplate db,FulfillmentMapper auth,MockNotificationGateway gateway,boolean enabled){this(db,auth,gateway,enabled,null);}
+ @org.springframework.beans.factory.annotation.Autowired public NotificationService(JdbcTemplate db,FulfillmentMapper auth,MockNotificationGateway gateway,@Value("${shop.notifications.mock-enabled:false}") boolean enabled,NotificationEmailer emailer){this.db=db;this.auth=auth;this.gateway=gateway;this.enabled=enabled;this.emailer=emailer;}
+ private record Box(String id,String kind,String order,String payload,String status,int version,int attempts,int cycle,LocalDateTime next,String error,LocalDateTime sent,LocalDateTime created,String recipient,String product) {}
  private LocalDateTime time(java.sql.ResultSet r,String c)throws java.sql.SQLException{return r.getObject(c,LocalDateTime.class);}
- private final RowMapper<Box> boxes=(r,n)->new Box(r.getString("id"),r.getString("event_kind"),(r.getString("order_id")!=null?r.getString("order_id"):r.getString("preorder_order_id")),r.getString("payload"),r.getString("status"),r.getInt("version"),r.getInt("attempts"),r.getInt("cycle_attempts"),time(r,"next_attempt_at"),r.getString("last_error"),time(r,"sent_at"),time(r,"created_at"));
+ private final RowMapper<Box> boxes=(r,n)->new Box(r.getString("id"),r.getString("event_kind"),(r.getString("order_id")!=null?r.getString("order_id"):r.getString("preorder_order_id")),r.getString("payload"),r.getString("status"),r.getInt("version"),r.getInt("attempts"),r.getInt("cycle_attempts"),time(r,"next_attempt_at"),r.getString("last_error"),time(r,"sent_at"),time(r,"created_at"),r.getString("recipient_ref"),r.getString("product_id"));
  private final RowMapper<Audit> audits=(r,n)->new Audit(r.getString("request_id"),r.getString("notification_id"),r.getObject("actor_id",Integer.class),r.getString("actor_username"),r.getString("action"),r.getString("mode"),r.getString("note"),r.getInt("expected_version"),r.getString("before_status"),r.getString("after_status"),r.getInt("after_version"),r.getInt("attempt_number"),r.getString("result"),time(r,"created_at"));
  private ResponseStatusException fail(int status,String message){return new ResponseStatusException(HttpStatus.valueOf(status),message);}
  private void uuid(String id){try{if(!UUID.fromString(id).toString().equals(id))throw new IllegalArgumentException();}catch(Exception e){throw fail(400,"通知或訂單ID不正確");}}
@@ -54,7 +55,7 @@ public class NotificationService {
   String error=null,result;boolean replay=false;
   try{replay=gateway.accept(b.id(),b.payload(),mode);if("FAIL_AFTER_ACCEPT".equals(mode)&&!replay)throw new MockNotificationGateway.Failure("MOCK_RESULT_UNKNOWN");result=replay?"ACCEPTED_REPLAY":"ACCEPTED";}catch(MockNotificationGateway.Failure e){error=e.code();result=error;}
   int cycle=b.cycle()+1;String state=error==null?"SENT":cycle>=5?"DEAD":"RETRY";LocalDateTime at=now();LocalDateTime next=state.equals("RETRY")?at.plusSeconds(Math.min(60,5L<<(cycle-1))):null;
-  db.update("UPDATE notification_outbox SET status=?,attempts=attempts+1,cycle_attempts=?,version=version+1,next_attempt_at=?,last_error=?,sent_at=?,updated_at=CURRENT_TIMESTAMP(6) WHERE id=?",state,cycle,next,error,state.equals("SENT")?at:null,b.id());var current=box(b.id(),false);finish(current,request,result);return new Applied(event(request),view(current),false);
+  db.update("UPDATE notification_outbox SET status=?,attempts=attempts+1,cycle_attempts=?,version=version+1,next_attempt_at=?,last_error=?,sent_at=?,updated_at=CURRENT_TIMESTAMP(6) WHERE id=?",state,cycle,next,error,state.equals("SENT")?at:null,b.id());if(state.equals("SENT")&&emailer!=null)emailer.onSent(b.recipient(),b.kind(),b.payload(),b.product());var current=box(b.id(),false);finish(current,request,result);return new Applied(event(request),view(current),false);
  }
  /** One short DB transaction per MOCK attempt. No socket I/O or business resource locks. */
  @Transactional(isolation=Isolation.READ_COMMITTED)

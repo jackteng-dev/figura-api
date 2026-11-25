@@ -94,7 +94,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     || (matcher.match("/api/customer/mock-payments/*/simulate",path)&&method.equals("POST"))
                     || (matcher.match("/api/customer/orders/*/ecpay-payments",path)&&method.equals("POST"))
                     || (path.equals("/api/customer/addresses")&&method.equals("GET"))
-                    || (matcher.match("/api/customer/addresses/*",path)&&(method.equals("PUT")||method.equals("DELETE")));
+                    || (matcher.match("/api/customer/addresses/*",path)&&(method.equals("PUT")||method.equals("DELETE")))
+                    // Commerce V2 Phase 3：收藏、商品提醒、通知偏好、站內通知
+                    || (path.equals("/api/customer/favorites")&&method.equals("GET"))
+                    || (path.equals("/api/customer/favorites/ids")&&method.equals("GET"))
+                    || (path.equals("/api/customer/favorites/merge")&&method.equals("POST"))
+                    || (matcher.match("/api/customer/favorites/*",path)&&!path.endsWith("/merge")&&!path.endsWith("/ids")&&(method.equals("PUT")||method.equals("DELETE")))
+                    || (path.equals("/api/customer/product-alerts")&&method.equals("GET"))
+                    || (matcher.match("/api/customer/product-alerts/*",path)&&method.equals("PUT"))
+                    || (path.equals("/api/customer/notification-preferences")&&(method.equals("GET")||method.equals("PUT")))
+                    || (path.equals("/api/customer/notifications")&&method.equals("GET"))
+                    || (path.equals("/api/customer/notifications/read")&&method.equals("POST"));
     }
     private void error(HttpServletResponse response, int status, String message) throws IOException {
         response.setStatus(status); response.setContentType("application/json"); response.setCharacterEncoding("UTF-8");

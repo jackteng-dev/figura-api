@@ -69,7 +69,7 @@ public final class CatalogPayloads {
         public static Search none(){return new Search(null,null,null,null,null,null,null,null,null,null,null,null,null,null);}
     }
     public static final List<String> AVAILABILITY=List.of("IN_STOCK","PREORDER","SOLD_OUT");
-    public static final List<String> SORTS=List.of("NEWEST","PRICE_ASC","PRICE_DESC","RELEASE_ASC","RELEASE_DESC","RELEVANCE");
+    public static final List<String> SORTS=List.of("NEWEST","PRICE_ASC","PRICE_DESC","RELEASE_ASC","RELEASE_DESC","RELEVANCE","STOCK_FIRST");
     public record FacetValue(String value,String label,long count) {}
     public record Facets(List<FacetValue> brands,List<FacetValue> works,List<FacetValue> categories,List<FacetValue> manufacturers,
                          List<FacetValue> availability,List<FacetValue> scales,List<FacetValue> materials,List<FacetValue> productTypes,

@@ -84,8 +84,10 @@ public class CatalogService {
 
     // ---- Commerce V2 Phase 2：後端搜尋與篩選。可售狀態在查詢中推導（與 publicView 相同規則：現貨 > 預購 > 售完）。
     private static final String PUBLIC_FROM=" FROM catalog_product p WHERE p.status='PUBLISHED' AND EXISTS(SELECT 1 FROM catalog_sku s WHERE s.product_id=p.id AND s.enabled=TRUE)";
-    private static final String IN_STOCK="EXISTS(SELECT 1 FROM catalog_sku s JOIN sku_inventory i ON i.sku_id=s.id WHERE s.product_id=p.id AND s.enabled=TRUE AND i.quantity-i.reserved>0)";
-    private static final String OPEN_BATCH="EXISTS(SELECT 1 FROM preorder_batch b WHERE b.product_id=p.id AND b.status='OPEN' AND b.deadline_at>CURRENT_TIMESTAMP(6) AND b.capacity-b.held_quantity-b.paid_quantity>0)";
+    static final String IN_STOCK="EXISTS(SELECT 1 FROM catalog_sku s JOIN sku_inventory i ON i.sku_id=s.id WHERE s.product_id=p.id AND s.enabled=TRUE AND i.quantity-i.reserved>0)";
+    /** 可下單的預購批次（別名 b）：開放、未截止、有剩餘配額，且批次款式仍屬該商品並啟用。搜尋、商品摘要與提醒掃描共用。 */
+    static final String ORDERABLE_BATCH="b.status='OPEN' AND b.deadline_at>CURRENT_TIMESTAMP(6) AND b.capacity-b.held_quantity-b.paid_quantity>0 AND EXISTS(SELECT 1 FROM catalog_sku k WHERE k.id=b.sku_id AND k.product_id=b.product_id AND k.enabled=TRUE)";
+    static final String OPEN_BATCH="EXISTS(SELECT 1 FROM preorder_batch b WHERE b.product_id=p.id AND "+ORDERABLE_BATCH+")";
     private static final String AVAIL="(CASE WHEN "+IN_STOCK+" THEN 'IN_STOCK' WHEN "+OPEN_BATCH+" THEN 'PREORDER' ELSE 'SOLD_OUT' END)";
     private static final String MIN_PRICE="(SELECT MIN(s.price_twd) FROM catalog_sku s WHERE s.product_id=p.id AND s.enabled=TRUE)";
     private static final String RELEASE="COALESCE(p.release_date,STR_TO_DATE(CONCAT(p.release_month,'-01'),'%Y-%m-%d'))";
@@ -129,6 +131,7 @@ public class CatalogService {
             case "RELEASE_ASC"->" ORDER BY "+RELEASE+" IS NULL,"+RELEASE+" ASC,p.created_at DESC,p.id DESC";
             case "RELEASE_DESC"->" ORDER BY "+RELEASE+" IS NULL,"+RELEASE+" DESC,p.created_at DESC,p.id DESC";
             case "RELEVANCE"->hasQuery?" ORDER BY MATCH(p.search_text) AGAINST(:qn IN NATURAL LANGUAGE MODE) DESC,p.created_at DESC,p.id DESC":" ORDER BY p.created_at DESC,p.id DESC";
+            case "STOCK_FIRST"->" ORDER BY "+IN_STOCK+" DESC,p.created_at DESC,p.id DESC";
             default->" ORDER BY p.created_at DESC,p.id DESC";
         };
     }
@@ -160,6 +163,9 @@ public class CatalogService {
                 price.get("lo")==null?null:((Number)price.get("lo")).intValue(),price.get("hi")==null?null:((Number)price.get("hi")).intValue(),((Number)price.get("c")).longValue());
     }
     @Transactional(readOnly=true) public PublicView publicDetail(String id){return publicView(require(mapper.publicFind(id)));}
+    /** 收藏／提醒用：只回目前公開的商品（下架或無可用款式者略過）。 */
+    @Transactional(readOnly=true) public Map<String,PublicView> publicViews(List<String> ids){
+        var out=new LinkedHashMap<String,PublicView>();for(String id:ids){var p=mapper.publicFind(id);if(p!=null)out.put(id,publicView(p));}return out;}
     private void authorize(dev.jackteng.figura.pojo.CustomUserDetails actor,String code){
         if(actor==null||authorization.lockActor(actor.getId())==null||authorization.lockPermission(actor.getId(),code).isEmpty())throw new ResponseStatusException(HttpStatus.FORBIDDEN,"員工或授權已失效");
     }
