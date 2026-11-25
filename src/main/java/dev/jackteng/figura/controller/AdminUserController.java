@@ -82,6 +82,19 @@ public class AdminUserController {
         return Result.success(sessions.login(username, password, deviceId, rememberMe, response));
     }
 
+    /** 雙因素第二步：{challenge, code}。 */
+    public record MfaLogin(@jakarta.validation.constraints.NotBlank String challenge, @jakarta.validation.constraints.NotBlank String code) {}
+    @PostMapping("/login/mfa")
+    public Result<User> loginMfa(@RequestBody @jakarta.validation.Valid MfaLogin in, HttpServletResponse response) {
+        return Result.success(sessions.completeMfa(in.challenge(), in.code(), response));
+    }
+    @Autowired private dev.jackteng.figura.service.StaffMfaService mfa;
+    public record MfaCode(@jakarta.validation.constraints.NotBlank String code) {}
+    @GetMapping("/mfa") public Result<dev.jackteng.figura.service.StaffMfaService.Status> mfaStatus(@AuthenticationPrincipal CustomUserDetails me) { return Result.success(mfa.status(me.getId())); }
+    @PostMapping("/mfa/setup") public Result<dev.jackteng.figura.service.StaffMfaService.Setup> mfaSetup(@AuthenticationPrincipal CustomUserDetails me) { return Result.success(mfa.setup(me.getId(), me.getUsername())); }
+    @PostMapping("/mfa/confirm") public Result<dev.jackteng.figura.service.StaffMfaService.Status> mfaConfirm(@AuthenticationPrincipal CustomUserDetails me, @RequestBody @jakarta.validation.Valid MfaCode in) { return Result.success(mfa.confirm(me.getId(), in.code())); }
+    @PostMapping("/mfa/disable") public Result<dev.jackteng.figura.service.StaffMfaService.Status> mfaDisable(@AuthenticationPrincipal CustomUserDetails me, @RequestBody @jakarta.validation.Valid MfaCode in) { return Result.success(mfa.disable(me.getId(), in.code())); }
+
     @PostMapping("/logout")
     public Result<Void> logout(HttpServletRequest request, HttpServletResponse response) {
         sessions.logout(JwtUtil.extractCookieToken(request, "refreshToken"), response);

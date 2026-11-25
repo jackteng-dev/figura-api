@@ -25,10 +25,13 @@ public class GlobalExceptionHandler {
     public org.springframework.http.ResponseEntity<Result> handleImageSize(Exception e){return org.springframework.http.ResponseEntity.status(413).body(Result.error("圖片最大5MB，請縮小檔案"));}
     @ExceptionHandler({org.springframework.web.multipart.support.MissingServletRequestPartException.class,org.springframework.validation.BindException.class})
     public org.springframework.http.ResponseEntity<Result> handleMultipart(Exception e){return org.springframework.http.ResponseEntity.badRequest().body(Result.error("圖片欄位或檔案不正確"));}
+    private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(GlobalExceptionHandler.class);
+    /** 未處理例外：記錄錯誤代碼（回給使用者以便回報）、類型與路徑；不回傳內部訊息。 */
     @ExceptionHandler(Exception.class)
-    public org.springframework.http.ResponseEntity<Result> handleException(Exception e){
-
-        return org.springframework.http.ResponseEntity.status(500).body(Result.error("操作失敗，請稍後再試"));
+    public org.springframework.http.ResponseEntity<Result> handleException(Exception e, jakarta.servlet.http.HttpServletRequest request){
+        String id = dev.jackteng.figura.service.OpsService.recordError(e, request == null ? null : request.getRequestURI());
+        LOG.error("Unhandled error {} on {} {}", id, request == null ? "" : request.getMethod(), request == null ? "" : request.getRequestURI(), e);
+        return org.springframework.http.ResponseEntity.status(500).body(Result.error("操作失敗，請稍後再試（錯誤代碼 " + id + "）"));
     }
     @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
     public org.springframework.http.ResponseEntity<Result> handleInvalidJson(Exception e) {

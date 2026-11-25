@@ -25,8 +25,14 @@ public class AdminSessionService {
             "if redis.call('GET',KEYS[1])==ARGV[1] then redis.call('SET',KEYS[1],ARGV[2],'EX',ARGV[3]); return 1 end; return 0", Long.class);
     private static final DefaultRedisScript<Long> REVOKE = new DefaultRedisScript<>(
             "if redis.call('GET',KEYS[1])==ARGV[1] then return redis.call('DEL',KEYS[1]) end; return 0", Long.class);
+    private final StaffMfaService mfa;
+    /** 舊建構方式（單元測試）：不啟用雙因素。 */
     public AdminSessionService(AdminUserService users, RoleService roles, BCryptPasswordEncoder passwords, StringRedisTemplate redis, JwtUtil jwt) {
-        this.users = users; this.roles = roles; this.passwords = passwords; this.redis = redis; this.jwt = jwt;
+        this(users, roles, passwords, redis, jwt, null);
+    }
+    @org.springframework.beans.factory.annotation.Autowired
+    public AdminSessionService(AdminUserService users, RoleService roles, BCryptPasswordEncoder passwords, StringRedisTemplate redis, JwtUtil jwt, StaffMfaService mfa) {
+        this.users = users; this.roles = roles; this.passwords = passwords; this.redis = redis; this.jwt = jwt; this.mfa = mfa;
     }
     public User login(String username, String password, String device, boolean remember, HttpServletResponse response) {
         checkDevice(device);
@@ -35,6 +41,22 @@ public class AdminSessionService {
         if (user == null || !"F".equals(user.getIsStop()) || !passwords.matches(password, user.getPassword())) throw unauthorized();
         user.setPermissions(permissions(user.getId()));
         if (user.getPermissions().isEmpty()) throw unauthorized();
+        if (mfa != null && mfa.enabled(user.getId())) {   // 雙因素：先回 challenge，驗證碼正確才發 session
+            var pending = new User(); pending.setMfaRequired(true); pending.setMfaChallenge(mfa.challenge(user.getId(), device, remember)); return pending;
+        }
+        return issue(user, device, remember, response);
+    }
+    /** 雙因素第二步：challenge＋驗證碼正確後才發 session（帳號狀態與權限重新核對）。 */
+    public User completeMfa(String challenge, String code, HttpServletResponse response) {
+        if (mfa == null) throw unauthorized();
+        var p = mfa.verify(challenge, code);
+        User user = users.findByUserName(p.username());
+        if (user == null || user.getId() != p.user() || !"F".equals(user.getIsStop())) throw unauthorized();
+        user.setPermissions(permissions(user.getId()));
+        if (user.getPermissions().isEmpty()) throw unauthorized();
+        return issue(user, p.device(), p.remember(), response);
+    }
+    private User issue(User user, String device, boolean remember, HttpServletResponse response) {
         var claims = claims(user, device, UUID.randomUUID().toString(), remember);
         users.updateLoginTime(user.getId());
         redis.opsForValue().set(key(claims), (String) claims.get("jti"), JwtUtil.REFRESH_LIFETIME);

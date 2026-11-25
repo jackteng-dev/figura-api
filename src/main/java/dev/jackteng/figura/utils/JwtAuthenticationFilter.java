@@ -22,7 +22,7 @@ import java.util.Set;
 
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
-    private static final Set<String> PUBLIC = Set.of("/api/admin/login", "/api/admin/logout", "/api/auth/refresh", "/api/auth/csrf",
+    private static final Set<String> PUBLIC = Set.of("/api/admin/login", "/api/admin/login/mfa", "/api/admin/logout", "/api/auth/refresh", "/api/auth/csrf",
             "/api/customer/auth/register", "/api/customer/auth/login", "/api/customer/auth/refresh", "/api/customer/auth/logout",
             "/api/customer/auth/email/verify", "/api/customer/auth/password/forgot", "/api/customer/auth/password/reset");
     private final AdminSessionService sessions;
@@ -61,7 +61,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 || Set.of("/api/admin/register","/api/admin/stopAccount","/api/admin/user/update").contains(path)) {
             error(response,410,"舊存取管理寫入已停用，請使用新版管理 API"); return;
         }
-        boolean authorized = ("/api/auth/me".equals(path) && "GET".equals(request.getMethod())) || user.getPermissions().stream().anyMatch(p ->
+        // 雙因素自助設定：任何已登入員工都可管理自己的 MFA，不需額外權限
+        boolean self = path.equals("/api/admin/mfa") || matcher.match("/api/admin/mfa/*", path);
+        boolean authorized = self || ("/api/auth/me".equals(path) && "GET".equals(request.getMethod())) || user.getPermissions().stream().anyMatch(p ->
                 p.getUrl() != null && p.getMethod() != null && matcher.match(p.getUrl(), path) && p.getMethod().equalsIgnoreCase(request.getMethod()));
         if (!authorized) { error(response, 403, "無使用權限"); return; }
         var authorities = user.getPermissions().stream().map(p -> new SimpleGrantedAuthority(p.getName())).distinct().toList();

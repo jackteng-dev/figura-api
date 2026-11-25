@@ -29,4 +29,7 @@ public class User {
     private String isStop;
     private List<Role> role;
     private List<Permission> permissions;
+    /** 雙因素：密碼正確但尚未驗證時為 true，並回傳 challenge（此時不發 session）。 */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) private Boolean mfaRequired;
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) private String mfaChallenge;
 }

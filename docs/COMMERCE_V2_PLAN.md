@@ -86,6 +86,31 @@
 - **客服政策**：政策頁草稿／待審／發布，未審核前前台顯示「條款審核中」；客服單、售後案件、狀態與指派。
 - **後台營運**：TOTP MFA（員工自願綁定、管理員可要求）、統計報表把 MOCK/測試付款與真實付款分開、銷售排行、低庫存提醒、備份還原文件。
 
-## 6. 待啟用清單（需外部服務或作者決定）
+## 6. 完成狀態（2026-11-25）
 
-正式 Email（SMTP／SES 等金鑰與寄件網域）、正式物流與超商 API、正式金流、第三方登入、正式網域與 Search Console 擁有權驗證、政策與條款的正式內容、nginx 部署契約變更（SEO SSI）、正式備份目的地。
+| 階段 | API | Web | App | 契約 |
+|---|---|---|---|---|
+| P1 規格 | V25、白名單驗證、AI 概念材質隔離 | 後台規格編輯、商品頁規格表 | 規格卡 | CATALOG_SEARCH_API |
+| P2 搜尋 | V26、搜尋／facets／排序白名單 | 列表改後端搜尋、舊網址相容 | 搜尋、篩選、捲動分頁 | CATALOG_SEARCH_API |
+| P3 收藏與通知 | V27、提醒掃描、站內通知、Email adapter（mock） | 收藏（訪客合併）、提醒、通知與設定 | 收藏、提醒、通知與設定 | ENGAGEMENT_API |
+| P4 SEO／GEO | SSI head／body、sitemap、robots、指南 | head 管理、SSI 標記、指南頁 | — | web docs/SEO_DEPLOYMENT |
+| P5 合併與倉庫 | V28、合併、暫存、提醒、運費調整 | 我的出貨、後台倉庫、運費調整 | 我的出貨 | WAREHOUSE_API |
+| P6 客服與政策 | V29、四眼發布、客服單、測試物流追蹤 | 政策頁、客服中心、後台頁面與客服、追蹤 | 客服、追蹤、政策頁 | SUPPORT_API |
+| P7 安全與營運 | V30、員工 TOTP、報表、低庫存、營運狀態、錯誤代碼 | 登入第二步、帳號安全、報表、營運狀態 | —（員工功能只在 Web） | OPS_SECURITY |
+
+## 7. 待啟用清單（需外部服務或作者決定）
+
+| 項目 | 現況 | 啟用需要 |
+|---|---|---|
+| 正式金流 | 模擬付款＋綠界測試環境；報表真實營收 0 | 商家資格與金鑰；`shop.payments.ecpay.live`；運費差額改為實際部分退款 |
+| 正式 Email | `EmailSender`＋`MockEmailSender` | 寄件網域、SMTP／SES 金鑰；有 timeout 的寄送 adapter |
+| 正式物流 | 測試物流（MOCK 貨件號、手動追蹤事件、5 間測試門市） | 物流商帳號與 API；實作 `TrackingService.CarrierAdapter`、門市電子地圖 |
+| SEO 伺服器注入 | API 與 index.html 標記已就緒，gateway 未開 SSI | 作者審核並修改 `showcase-publish.py`（web docs/SEO_DEPLOYMENT.md） |
+| Search Console | 文件已備 | 網域擁有權驗證、提交 sitemap |
+| 政策內容 | 8 個空白草稿 | 作者撰寫，經另一位員工審核發布 |
+| 倉庫期限與逾期政策 | 60 天（測試值），逾期只標示 | 作者核定 |
+| 運費費率 | 測試值 | 作者核定 |
+| 員工 MFA | 自願啟用 | 正式設定 `MFA_ENCRYPTION_KEY` 並離線保存；是否強制由作者決定 |
+| 排程 | 提醒掃描、倉庫提醒、通知 worker 預設關閉 | `shop.product-alerts.scanner-enabled`、`shop.warehouse.reminder-enabled`、`shop.notifications.worker-enabled` |
+| 備份 | 文件與指令（OPS_SECURITY.md） | 正式備份目的地、排程與還原演練 |
+| 第三方登入、3D／AR | 不在本次範圍 | — |
