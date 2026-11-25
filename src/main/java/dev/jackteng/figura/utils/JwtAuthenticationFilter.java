@@ -32,7 +32,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain) throws ServletException, IOException {
         String path = request.getServletPath();
-        if ("GET".equals(request.getMethod()) && (path.equals("/api/catalog/preorders") || matcher.match("/api/catalog/preorders/*",path) || path.equals("/api/catalog/products") || matcher.match("/api/catalog/products/*",path) || matcher.match("/api/catalog/products/*/image/*",path) || matcher.match("/api/catalog/products/*/image",path))) {
+        if ("GET".equals(request.getMethod()) && (path.equals("/api/catalog/preorders") || matcher.match("/api/catalog/preorders/*",path) || path.equals("/api/catalog/products") || path.equals("/api/catalog/facets") || matcher.match("/api/catalog/products/*",path) || matcher.match("/api/catalog/products/*/image/*",path) || matcher.match("/api/catalog/products/*/image",path))) {
             chain.doFilter(request,response); return;
         }
         if ("POST".equals(request.getMethod()) && (path.equals("/api/payments/mock/callback") || path.equals("/api/preorder-payments/mock/callback") || path.equals("/api/payments/ecpay/callback"))) { chain.doFilter(request,response); return; }

@@ -19,7 +19,8 @@ public class CatalogService {
     private final CatalogMasterService masters;
     private final InventoryMapper inventory;
     private final dev.jackteng.figura.mapper.ImageMapper images;
-    public CatalogService(CatalogMapper mapper,InventoryMapper inventory,dev.jackteng.figura.mapper.ImageMapper images,dev.jackteng.figura.mapper.FulfillmentMapper authorization,CatalogMasterService masters){this.masters=masters;this.mapper=mapper;this.inventory=inventory;this.images=images;this.authorization=authorization;}
+    private final org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate sql;
+    public CatalogService(CatalogMapper mapper,InventoryMapper inventory,dev.jackteng.figura.mapper.ImageMapper images,dev.jackteng.figura.mapper.FulfillmentMapper authorization,CatalogMasterService masters,org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate sql){this.masters=masters;this.mapper=mapper;this.inventory=inventory;this.images=images;this.authorization=authorization;this.sql=sql;}
     private ResponseStatusException bad(String reason){return new ResponseStatusException(HttpStatus.BAD_REQUEST,reason);}
     private ResponseStatusException conflict(String reason){return new ResponseStatusException(HttpStatus.CONFLICT,reason);}
     private CatalogProduct require(CatalogProduct product){if(product==null)throw new ResponseStatusException(HttpStatus.NOT_FOUND,"找不到商品");return product;}
@@ -79,7 +80,85 @@ public class CatalogService {
     private String work(CatalogProduct p){return p.getWorkId()==null?null:masters.find("WORK",p.getWorkId()).name();}
     @Transactional(readOnly=true) public Page<AdminView> adminList(int page,int pageSize){pagination(page,pageSize);return new Page<>(mapper.list(false,pageSize,(page-1)*pageSize).stream().map(this::view).toList(),page,pageSize,mapper.count(false));}
     @Transactional(readOnly=true) public AdminView adminDetail(String id){return view(require(mapper.find(id)));}
-    @Transactional(readOnly=true) public Page<PublicView> publicList(int page,int pageSize){pagination(page,pageSize);return new Page<>(mapper.list(true,pageSize,(page-1)*pageSize).stream().map(this::publicView).toList(),page,pageSize,mapper.count(true));}
+    @Transactional(readOnly=true) public Page<PublicView> publicList(int page,int pageSize){return search(Search.none(),page,pageSize);}
+
+    // ---- Commerce V2 Phase 2：後端搜尋與篩選。可售狀態在查詢中推導（與 publicView 相同規則：現貨 > 預購 > 售完）。
+    private static final String PUBLIC_FROM=" FROM catalog_product p WHERE p.status='PUBLISHED' AND EXISTS(SELECT 1 FROM catalog_sku s WHERE s.product_id=p.id AND s.enabled=TRUE)";
+    private static final String IN_STOCK="EXISTS(SELECT 1 FROM catalog_sku s JOIN sku_inventory i ON i.sku_id=s.id WHERE s.product_id=p.id AND s.enabled=TRUE AND i.quantity-i.reserved>0)";
+    private static final String OPEN_BATCH="EXISTS(SELECT 1 FROM preorder_batch b WHERE b.product_id=p.id AND b.status='OPEN' AND b.deadline_at>CURRENT_TIMESTAMP(6) AND b.capacity-b.held_quantity-b.paid_quantity>0)";
+    private static final String AVAIL="(CASE WHEN "+IN_STOCK+" THEN 'IN_STOCK' WHEN "+OPEN_BATCH+" THEN 'PREORDER' ELSE 'SOLD_OUT' END)";
+    private static final String MIN_PRICE="(SELECT MIN(s.price_twd) FROM catalog_sku s WHERE s.product_id=p.id AND s.enabled=TRUE)";
+    private static final String RELEASE="COALESCE(p.release_date,STR_TO_DATE(CONCAT(p.release_month,'-01'),'%Y-%m-%d'))";
+    private static final java.util.regex.Pattern UUID_RE=java.util.regex.Pattern.compile("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
+    private static List<String> clean(List<String> v){return v==null?List.of():v.stream().filter(Objects::nonNull).flatMap(x->Arrays.stream(x.split(","))).map(String::trim).filter(x->!x.isEmpty()).distinct().toList();}
+    private List<String> allowed(List<String> v,List<String> allowed,String label,boolean upper){var out=clean(v).stream().map(x->upper?x.toUpperCase(Locale.ROOT):x).toList();for(String x:out)if(!allowed.contains(x))throw bad(label+"不正確："+x);if(out.size()>20)throw bad(label+"過多");return out;}
+    private List<String> ids(List<String> v,String label){var out=clean(v);for(String x:out)if(!UUID_RE.matcher(x).matches())throw bad(label+"不正確");if(out.size()>20)throw bad(label+"過多");return out;}
+    /** 依條件組 WHERE；回傳 SQL 片段並填入參數。 */
+    private String where(Search s,org.springframework.jdbc.core.namedparam.MapSqlParameterSource args,boolean includeAvailability){
+        var w=new StringBuilder(PUBLIC_FROM);
+        String q=s.q()==null?"":s.q().trim();
+        if(q.length()>80)throw bad("搜尋文字過長");
+        if(!q.isEmpty()){
+            // ngram 斷詞最短 2 字；1 字或含特殊符號時改用 LIKE（商品數量有限，仍可接受）
+            String term=q.replaceAll("[+\\-<>()~*\"@]"," ").trim();
+            if(term.codePointCount(0,term.length())>=2){w.append(" AND MATCH(p.search_text) AGAINST(:q IN BOOLEAN MODE)");args.addValue("q",Arrays.stream(term.split("\\s+")).filter(x->!x.isEmpty()).map(x->"+\""+x+"\"").reduce((a,b)->a+" "+b).orElse(term));}
+            else {w.append(" AND p.search_text LIKE :like");args.addValue("like","%"+q.replace("\\","\\\\").replace("%","\\%").replace("_","\\_")+"%");}
+        }
+        var brands=ids(s.brandIds(),"品牌");if(!brands.isEmpty()){w.append(" AND p.brand_id IN (:brands)");args.addValue("brands",brands);}
+        var works=ids(s.workIds(),"作品");if(!works.isEmpty()){w.append(" AND p.work_id IN (:works)");args.addValue("works",works);}
+        var cats=ids(s.categoryIds(),"分類");if(!cats.isEmpty()){w.append(" AND p.category_id IN (:cats)");args.addValue("cats",cats);}
+        var makers=clean(s.manufacturers());if(makers.size()>20)throw bad("製造商過多");if(!makers.isEmpty()){w.append(" AND p.manufacturer IN (:makers)");args.addValue("makers",makers);}
+        var scales=allowed(s.scales(),SCALES,"比例",true);if(!scales.isEmpty()){w.append(" AND p.scale IN (:scales)");args.addValue("scales",scales);}
+        var types=allowed(s.productTypes(),PRODUCT_TYPES,"商品類型",true);if(!types.isEmpty()){w.append(" AND p.product_type IN (:types)");args.addValue("types",types);}
+        var eds=allowed(s.editions(),EDITIONS,"商品版本",true);if(!eds.isEmpty()){w.append(" AND p.edition IN (:eds)");args.addValue("eds",eds);}
+        var mats=allowed(s.materials(),MATERIALS,"材質",true);
+        // AI 概念商品沒有真實材質，材質篩選只比對真實商品
+        if(!mats.isEmpty()){w.append(" AND p.content_origin='REAL' AND (");for(int i=0;i<mats.size();i++){w.append(i>0?" OR ":"").append("FIND_IN_SET(:mat").append(i).append(",p.materials)>0");args.addValue("mat"+i,mats.get(i));}w.append(")");}
+        if(Boolean.TRUE.equals(s.limited()))w.append(" AND p.is_limited=TRUE");
+        if(s.priceMin()!=null){if(s.priceMin()<0)throw bad("價格範圍不正確");w.append(" AND "+MIN_PRICE+">=:pmin");args.addValue("pmin",s.priceMin());}
+        if(s.priceMax()!=null){if(s.priceMax()<0||(s.priceMin()!=null&&s.priceMax()<s.priceMin()))throw bad("價格範圍不正確");w.append(" AND "+MIN_PRICE+"<=:pmax");args.addValue("pmax",s.priceMax());}
+        if(includeAvailability){var av=allowed(s.availability(),AVAILABILITY,"可售狀態",true);if(!av.isEmpty()){w.append(" AND "+AVAIL+" IN (:avail)");args.addValue("avail",av);}}
+        return w.toString();
+    }
+    private String order(String sort,boolean hasQuery){
+        String s=sort==null||sort.isBlank()?(hasQuery?"RELEVANCE":"NEWEST"):sort.trim().toUpperCase(Locale.ROOT);
+        if(!SORTS.contains(s))throw bad("排序方式不正確");
+        return switch(s){
+            case "PRICE_ASC"->" ORDER BY "+MIN_PRICE+" ASC,p.created_at DESC,p.id DESC";
+            case "PRICE_DESC"->" ORDER BY "+MIN_PRICE+" DESC,p.created_at DESC,p.id DESC";
+            case "RELEASE_ASC"->" ORDER BY "+RELEASE+" IS NULL,"+RELEASE+" ASC,p.created_at DESC,p.id DESC";
+            case "RELEASE_DESC"->" ORDER BY "+RELEASE+" IS NULL,"+RELEASE+" DESC,p.created_at DESC,p.id DESC";
+            case "RELEVANCE"->hasQuery?" ORDER BY MATCH(p.search_text) AGAINST(:qn IN NATURAL LANGUAGE MODE) DESC,p.created_at DESC,p.id DESC":" ORDER BY p.created_at DESC,p.id DESC";
+            default->" ORDER BY p.created_at DESC,p.id DESC";
+        };
+    }
+    @Transactional(readOnly=true) public Page<PublicView> search(Search s,int page,int pageSize){
+        if(page<1||page>1000||pageSize<1||pageSize>50)throw bad("分頁範圍不正確");
+        var args=new org.springframework.jdbc.core.namedparam.MapSqlParameterSource();
+        String where=where(s,args,true);boolean hasQuery=s.q()!=null&&!s.q().isBlank();
+        if(hasQuery)args.addValue("qn",s.q().trim());
+        long total=sql.queryForObject("SELECT COUNT(*)"+where,args,Long.class);
+        args.addValue("limit",pageSize).addValue("offset",(page-1)*pageSize);
+        var ids=sql.queryForList("SELECT p.id"+where+order(s.sort(),hasQuery)+" LIMIT :limit OFFSET :offset",args,String.class);
+        return new Page<>(ids.stream().map(id->publicView(require(mapper.find(id)))).toList(),page,pageSize,total);
+    }
+    private List<FacetValue> group(String expr,String labelExpr,String where,org.springframework.jdbc.core.namedparam.MapSqlParameterSource args){
+        return sql.query("SELECT "+expr+" v,"+labelExpr+" l,COUNT(*) c"+where+" AND "+expr+" IS NOT NULL GROUP BY v,l ORDER BY c DESC,l",args,(r,n)->new FacetValue(r.getString("v"),r.getString("l"),r.getLong("c")));
+    }
+    /** 篩選選項與筆數：以目前搜尋條件（不含可售狀態本身）計算，只算上架商品。 */
+    @Transactional(readOnly=true) public Facets facets(Search s){
+        var args=new org.springframework.jdbc.core.namedparam.MapSqlParameterSource();String where=where(s,args,false);
+        var materials=new TreeMap<String,Long>();
+        for(var row:sql.queryForList("SELECT p.materials m"+where+" AND p.content_origin='REAL' AND p.materials IS NOT NULL",args))for(String m:String.valueOf(row.get("m")).split(","))materials.merge(m,1L,Long::sum);
+        var price=sql.queryForMap("SELECT MIN("+MIN_PRICE+") lo,MAX("+MIN_PRICE+") hi,COUNT(*) c"+where,args);
+        return new Facets(group("p.brand_id","(SELECT name FROM catalog_brand x WHERE x.id=p.brand_id)",where,args),
+                group("p.work_id","(SELECT name FROM catalog_work x WHERE x.id=p.work_id)",where,args),
+                group("p.category_id","(SELECT name FROM catalog_category x WHERE x.id=p.category_id)",where,args),
+                group("p.manufacturer","p.manufacturer",where,args),group(AVAIL,AVAIL,where,args),
+                group("p.scale","p.scale",where,args),materials.entrySet().stream().map(e->new FacetValue(e.getKey(),e.getKey(),e.getValue())).toList(),
+                group("p.product_type","p.product_type",where,args),group("p.edition","p.edition",where,args),
+                price.get("lo")==null?null:((Number)price.get("lo")).intValue(),price.get("hi")==null?null:((Number)price.get("hi")).intValue(),((Number)price.get("c")).longValue());
+    }
     @Transactional(readOnly=true) public PublicView publicDetail(String id){return publicView(require(mapper.publicFind(id)));}
     private void authorize(dev.jackteng.figura.pojo.CustomUserDetails actor,String code){
         if(actor==null||authorization.lockActor(actor.getId())==null||authorization.lockPermission(actor.getId(),code).isEmpty())throw new ResponseStatusException(HttpStatus.FORBIDDEN,"員工或授權已失效");

@@ -12,7 +12,19 @@ import org.springframework.web.bind.annotation.*;
 public class CatalogController {
     private final CatalogService catalog;
     public CatalogController(CatalogService catalog){this.catalog=catalog;}
-    @GetMapping("/catalog/products") public Result<Page<PublicView>> list(@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="12") int pageSize){return Result.success(catalog.publicList(page,pageSize));}
+    /** 商品搜尋：舊呼叫只帶 page/pageSize 照舊（最新上架）；其餘參數見 docs/CATALOG_SEARCH_API.md。 */
+    @GetMapping("/catalog/products") public Result<Page<PublicView>> list(@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="12") int pageSize,
+            @RequestParam(required=false) String q,@RequestParam(required=false) java.util.List<String> brandId,@RequestParam(required=false) java.util.List<String> workId,
+            @RequestParam(required=false) java.util.List<String> categoryId,@RequestParam(required=false) java.util.List<String> manufacturer,
+            @RequestParam(required=false) java.util.List<String> availability,@RequestParam(required=false) Integer priceMin,@RequestParam(required=false) Integer priceMax,
+            @RequestParam(required=false) java.util.List<String> scale,@RequestParam(required=false) java.util.List<String> material,@RequestParam(required=false) java.util.List<String> productType,
+            @RequestParam(required=false) java.util.List<String> edition,@RequestParam(required=false) Boolean limited,@RequestParam(required=false) String sort){
+        return Result.success(catalog.search(new Search(q,brandId,workId,categoryId,manufacturer,availability,priceMin,priceMax,scale,material,productType,edition,limited,sort),page,pageSize));}
+    @GetMapping("/catalog/facets") public Result<Facets> facets(@RequestParam(required=false) String q,@RequestParam(required=false) java.util.List<String> brandId,@RequestParam(required=false) java.util.List<String> workId,
+            @RequestParam(required=false) java.util.List<String> categoryId,@RequestParam(required=false) java.util.List<String> manufacturer,@RequestParam(required=false) Integer priceMin,@RequestParam(required=false) Integer priceMax,
+            @RequestParam(required=false) java.util.List<String> scale,@RequestParam(required=false) java.util.List<String> material,@RequestParam(required=false) java.util.List<String> productType,
+            @RequestParam(required=false) java.util.List<String> edition,@RequestParam(required=false) Boolean limited){
+        return Result.success(catalog.facets(new Search(q,brandId,workId,categoryId,manufacturer,null,priceMin,priceMax,scale,material,productType,edition,limited,null)));}
     @GetMapping("/catalog/products/{id}") public Result<PublicView> detail(@PathVariable String id){return Result.success(catalog.publicDetail(id));}
     @GetMapping("/admin/products") public Result<Page<AdminView>> adminList(@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="12") int pageSize){return Result.success(catalog.adminList(page,pageSize));}
     @GetMapping("/admin/products/{id}") public Result<AdminView> adminDetail(@PathVariable String id){return Result.success(catalog.adminDetail(id));}

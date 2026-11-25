@@ -62,4 +62,16 @@ public final class CatalogPayloads {
     public record PublicView(String id,String title,String brand,String category,String description,List<PublicSku> skus,ImagePayloads.Image image,String work,
                              Specs specs,String contentOrigin,String availability,Integer minPriceTwd,PreorderSummary preorder,java.time.OffsetDateTime updatedAt) {}
     public record Page<T>(List<T> items,int page,int pageSize,long total) {}
+    /** 商品搜尋條件（全部可省略）。多值欄位以 OR 比對，不同欄位以 AND。 */
+    public record Search(String q,List<String> brandIds,List<String> workIds,List<String> categoryIds,List<String> manufacturers,
+                         List<String> availability,Integer priceMin,Integer priceMax,List<String> scales,List<String> materials,
+                         List<String> productTypes,List<String> editions,Boolean limited,String sort) {
+        public static Search none(){return new Search(null,null,null,null,null,null,null,null,null,null,null,null,null,null);}
+    }
+    public static final List<String> AVAILABILITY=List.of("IN_STOCK","PREORDER","SOLD_OUT");
+    public static final List<String> SORTS=List.of("NEWEST","PRICE_ASC","PRICE_DESC","RELEASE_ASC","RELEASE_DESC","RELEVANCE");
+    public record FacetValue(String value,String label,long count) {}
+    public record Facets(List<FacetValue> brands,List<FacetValue> works,List<FacetValue> categories,List<FacetValue> manufacturers,
+                         List<FacetValue> availability,List<FacetValue> scales,List<FacetValue> materials,List<FacetValue> productTypes,
+                         List<FacetValue> editions,Integer priceMin,Integer priceMax,long total) {}
 }
