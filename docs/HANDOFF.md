@@ -1,5 +1,17 @@
 # Figura（原 ELPSY Shop） 後端交接
 
+## 2026-11-25：Commerce V2 Phase 1–3（規格、後端搜尋、收藏與通知；V25–V27，未合併）
+
+分支 `feat/commerce-v2-specs`（Web／App 同名）。計畫與狀態：`docs/COMMERCE_V2_PLAN.md`；契約：`docs/CATALOG_SEARCH_API.md`、`docs/ENGAGEMENT_API.md`。**V25–V27 位於受保護路徑，需作者受控切換；不 merge、不部署、未碰正式 DB。** V1–V24 bytes 不變。
+
+- **P1 規格（V25）**：catalog_product 新增角色、製造商、比例、全高、尺寸、材質、類型、版本、限定、配件、發售日／月、規格說明、`content_origin`、概念材質、`search_text`；白名單 CHECK。資料寫入只有：描述開頭為「AI 生成概念圖｜展示商品」者標 `AI_CONCEPT`、回填 search_text。**既有 99 款未填任何規格（NULL＝未提供）**；AI 概念材質公開時不放在 materials。
+- **P2 搜尋（V26）**：`GET /catalog/products` 支援 q（ngram FULLTEXT，1 字用 LIKE）、品牌／作品／分類／製造商／可售狀態／價格／比例／材質／類型／版本／限定與排序白名單（含相容舊網址的 STOCK_FIRST）；`GET /catalog/facets`（可售狀態本身不套用自己的篩選）。可下單批次規則（開放、未截止、有配額、款式啟用）由搜尋、商品摘要與提醒掃描共用。品牌／作品改名同交易重建 search_text。
+- **P3（V27）**：收藏（含訪客合併）、商品提醒（補貨／開放預購／截止前 48h／發售）、通知偏好、站內通知匣。提醒由 `ProductAlertScanner` 只在狀態轉換時寫 outbox（product parent），首次觀察只建基準，`(event_kind,source_id)` 防重；排程 `shop.product-alerts.scanner-enabled` 預設 false。Email 只有 `EmailSender` 介面＋`MockEmailSender`（MOCK_EMAIL_ENABLED，寫 customer_mock_email purpose=NOTIFY）；正式寄信待金鑰。
+- **測試**：新增 ProductSpecs 4、CatalogSearch 2、Engagement 3 項。全套 333 項：失敗只剩本機環境既有項（Notification／PreorderOrder 通知測試需 `MOCK_NOTIFICATIONS_ENABLED=true`，加上後 12＋18 全過；StaffAccess 2 項因本機 DB 角色數 54＞50）。測試 DB 先前失敗殘留的 34 筆 1990 年 outbox 合成資料已延後，才讓 worker 測試通過。
+- **Codex 唯讀 review（P1–2）**：6 項 P2／P3（停用款式批次、額滿批次遮蔽、facets 快取、改名不同步、發售日切換、舊排序）已全部修正。
+- 本機 demo DB 已到 V27，API 以新 jar 執行於 19092。
+- 下一步：P4 SEO／GEO（`/api/seo/*`＋nginx SSI，部署契約變更）、P5 合併與倉庫（V28）、P6 客服政策（V29）、P7 後台營運（V30）。
+
 ## 2026-11-19：商品多圖與 V24（未合併／受控切換前不可 merge）
 
 分支 `codex/product-gallery`，基於遠端 main `6121c3a`；配對 Web `codex/comfyui-product-gallery`。**V24 位於 CD 受保護路徑 `src/main/resources/`，需要作者在伺服器執行受控 schema／contract switch；本輪不 merge、不部署、不操作正式 DB。** V1–V23 bytes 不變。
