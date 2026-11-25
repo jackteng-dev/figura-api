@@ -141,6 +141,29 @@ class OpsIntegrationTest extends ShopIntegrationSupport {
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM staff_mfa_event WHERE id=? AND user_id=? AND action='RESET' AND actor_id=?", Integer.class, body.get("requestId"), staffId, Integer.parseInt(a.id())), "重設稽核");
     }
 
+    @Test void resetInvalidatesPendingTokensAndBackupCodeGuessingIsLimited() throws Exception {
+        String pw = System.getenv("DEMO_STAFF_PASSWORD"); if (pw == null) return;
+        var a = admin(); clearMfa("shop_staff"); int staffId = id("shop_staff");
+        var g = guest();
+        String tokenA = data(password(g, "shop_staff", pw)).path("mfaSetupToken").asText(), tokenB = data(password(g, "shop_staff", pw)).path("mfaSetupToken").asText();
+        String secret = data(ok(g, "POST", "/admin/login/mfa/setup", Map.of("setupToken", tokenA), 200)).path("secret").asText();
+        var enrolled = call(g, "POST", "/admin/login/mfa/enroll", Map.of("setupToken", tokenA, "code", StaffLogin.totp(secret, step())));
+        assertEquals(200, enrolled.getResponse().getStatus(), text(enrolled));
+        assertEquals(409, call(g, "POST", "/admin/login/mfa/setup", Map.of("setupToken", tokenB)).getResponse().getStatus(), "已綁定後另一枚綁定 token 不能重設密鑰");
+        var s = new Client(g.csrf(), List.of(g.cookies().get(0), cookie(enrolled, "accessToken"), cookie(enrolled, "refreshToken")), String.valueOf(staffId));
+        // 已登入 session 也不能無限猜碼重新產生備援碼
+        boolean capped = false;
+        for (int i = 0; i < 12 && !capped; i++) capped = call(s, "POST", "/admin/mfa/backup-codes", Map.of("code", "88888" + (i % 10))).getResponse().getStatus() == 429;
+        assertTrue(capped, "備援碼端點有帳號層級上限");
+        redis.delete("shop:mfa:fail:" + staffId);
+        // 進行中的 challenge 在重設後失效，即使驗證碼正確
+        String challenge = data(password(guest(), "shop_staff", pw)).path("mfaChallenge").asText();
+        ok(a, "POST", "/admin/access/staff/" + staffId + "/mfa/reset", Map.of("requestId", uuid(), "note", "測試重設"), 200);
+        assertEquals(401, call(g, "POST", "/admin/login/mfa", Map.of("challenge", challenge, "code", StaffLogin.totp(secret, step() + 1))).getResponse().getStatus(), "重設前的 challenge 失效");
+        assertEquals(401, call(g, "POST", "/admin/login/mfa/setup", Map.of("setupToken", tokenB)).getResponse().getStatus(), "重設前的綁定 token 失效");
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM staff_mfa WHERE user_id=?", Integer.class, staffId), "沒有人能用舊 token 搶先重新綁定");
+    }
+
     @Test void reportsSeparateMockFromRealAndListLowStock() throws Exception {
         var a = admin(); var f = fixture(a, 1, 777);
         var sales = data(ok(a, "GET", "/admin/reports/sales", null, 200));

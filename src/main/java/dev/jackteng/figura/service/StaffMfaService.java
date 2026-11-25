@@ -45,9 +45,9 @@ public class StaffMfaService {
     private static final String BACKUP_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     private static final DefaultRedisScript<List> RESERVE = new DefaultRedisScript<>(
             "if redis.call('EXISTS',KEYS[1])==0 then return nil end; local t=redis.call('HINCRBY',KEYS[1],'tries',1); "
-            + "if t>5 then redis.call('DEL',KEYS[1]); return nil end; return redis.call('HMGET',KEYS[1],'user','device','remember')", List.class);
+            + "if t>5 then redis.call('DEL',KEYS[1]); return nil end; return redis.call('HMGET',KEYS[1],'user','device','remember','auth')", List.class);
     private static final DefaultRedisScript<List> PEEK = new DefaultRedisScript<>(
-            "if redis.call('EXISTS',KEYS[1])==0 then return nil end; return redis.call('HMGET',KEYS[1],'user','device','remember')", List.class);
+            "if redis.call('EXISTS',KEYS[1])==0 then return nil end; return redis.call('HMGET',KEYS[1],'user','device','remember','auth')", List.class);
     private static final DefaultRedisScript<Long> ACCOUNT = new DefaultRedisScript<>(
             "local n=redis.call('INCR',KEYS[1]); if n==1 then redis.call('EXPIRE',KEYS[1],ARGV[1]) end; return n", Long.class);
 
@@ -75,7 +75,8 @@ public class StaffMfaService {
 
     public record Status(boolean available, boolean enabled, int backupCodesRemaining) {}
     public record Setup(String secret, String otpauthUri) {}
-    public record Pending(int user, String username, String device, boolean remember) {}
+    /** authVersion：簽發 token 當下的 user.auth_version；重設會遞增，舊流程因此失效。 */
+    public record Pending(int user, String username, String device, boolean remember, int authVersion) {}
     public record Enrolled(Pending pending, List<String> backupCodes) {}
 
     @Transactional(readOnly = true)
@@ -88,11 +89,11 @@ public class StaffMfaService {
     }
 
     // ---- 登入：challenge（已綁定）與綁定 token（未綁定） ----
-    public String challenge(int user, String device, boolean remember) { return token("shop:mfa:challenge:", user, device, remember, CHALLENGE_TTL); }
-    public String setupToken(int user, String device, boolean remember) { return token("shop:mfa:setup:", user, device, remember, SETUP_TTL); }
-    private String token(String prefix, int user, String device, boolean remember, Duration ttl) {
+    public String challenge(int user, int authVersion, String device, boolean remember) { return token("shop:mfa:challenge:", user, authVersion, device, remember, CHALLENGE_TTL); }
+    public String setupToken(int user, int authVersion, String device, boolean remember) { return token("shop:mfa:setup:", user, authVersion, device, remember, SETUP_TTL); }
+    private String token(String prefix, int user, int authVersion, String device, boolean remember, Duration ttl) {
         String id = UUID.randomUUID().toString(), k = prefix + id;
-        redis.opsForHash().putAll(k, Map.of("user", String.valueOf(user), "device", device, "remember", String.valueOf(remember), "tries", "0"));
+        redis.opsForHash().putAll(k, Map.of("user", String.valueOf(user), "device", device, "remember", String.valueOf(remember), "auth", String.valueOf(authVersion), "tries", "0"));
         redis.expire(k, ttl);
         return id;
     }
@@ -103,7 +104,7 @@ public class StaffMfaService {
     /** 帳號層級額度：核對前原子保留一次嘗試，超過上限 429。 */
     private void reserveAccount(int user, String tokenKey) {
         Long used = redis.execute(ACCOUNT, List.of("shop:mfa:fail:" + user), String.valueOf(ACCOUNT_WINDOW.toSeconds()));
-        if (used == null || used > MAX_ACCOUNT_FAILURES) { redis.delete(tokenKey); throw fail(429, "驗證錯誤次數過多，請 15 分鐘後再登入"); }
+        if (used == null || used > MAX_ACCOUNT_FAILURES) { if (tokenKey != null) redis.delete(tokenKey); throw fail(429, "驗證錯誤次數過多，請 15 分鐘後再試"); }
     }
     private void failed(int user) { tx.executeWithoutResult(st -> event(user, "LOGIN_FAIL", null, null)); }
 
@@ -113,9 +114,9 @@ public class StaffMfaService {
         String k = "shop:mfa:setup:" + valid(setupToken);
         @SuppressWarnings("unchecked") List<Object> p = redis.execute(PEEK, List.of(k));
         if (p == null || p.isEmpty() || p.get(0) == null) throw fail(401, "驗證已過期，請重新登入");
-        int user = Integer.parseInt(String.valueOf(p.get(0)));
+        int user = Integer.parseInt(String.valueOf(p.get(0))), auth = authOf(p);
         return tx.execute(st -> {
-            var row = lock(user);
+            var row = lock(user, auth);
             if (row != null && truthy(row.get("enabled"))) throw fail(409, "已完成雙因素綁定，請重新登入");
             byte[] raw = new byte[20]; random.nextBytes(raw);
             if (row == null) db.update("INSERT INTO staff_mfa(user_id,secret_enc,enabled) VALUES(?,?,FALSE)", user, encrypt(raw));
@@ -133,10 +134,10 @@ public class StaffMfaService {
         String k = "shop:mfa:setup:" + valid(setupToken);
         @SuppressWarnings("unchecked") List<Object> p = redis.execute(RESERVE, List.of(k));
         if (p == null || p.isEmpty() || p.get(0) == null) throw fail(401, "驗證已過期，請重新登入");
-        int user = Integer.parseInt(String.valueOf(p.get(0)));
+        int user = Integer.parseInt(String.valueOf(p.get(0))), auth = authOf(p);
         reserveAccount(user, k);
         List<String> codes = tx.execute(st -> {
-            var row = lock(user);
+            var row = lock(user, auth);
             if (row == null || truthy(row.get("enabled")) || !totp(user, row, code)) return null;
             db.update("UPDATE staff_mfa SET enabled=TRUE,confirmed_at=CURRENT_TIMESTAMP(6) WHERE user_id=?", user);
             var out = newBackupCodes(user);
@@ -155,10 +156,10 @@ public class StaffMfaService {
         String k = "shop:mfa:challenge:" + valid(challenge);
         @SuppressWarnings("unchecked") List<Object> p = redis.execute(RESERVE, List.of(k));
         if (p == null || p.isEmpty() || p.get(0) == null) throw fail(401, "驗證已過期，請重新登入");
-        int user = Integer.parseInt(String.valueOf(p.get(0)));
+        int user = Integer.parseInt(String.valueOf(p.get(0))), auth = authOf(p);
         reserveAccount(user, k);
         String used = tx.execute(st -> {
-            var row = lock(user);
+            var row = lock(user, auth);
             if (row == null || !truthy(row.get("enabled"))) return null;
             if (totp(user, row, code)) return "TOTP";
             if (backup(user, code)) { event(user, "BACKUP_USED", null, null); return "BACKUP"; }
@@ -171,18 +172,26 @@ public class StaffMfaService {
         return pending(user, p);
     }
     private Pending pending(int user, List<Object> p) {
-        return new Pending(user, db.queryForObject("SELECT username FROM user WHERE id=?", String.class, user), String.valueOf(p.get(1)), Boolean.parseBoolean(String.valueOf(p.get(2))));
+        return new Pending(user, db.queryForObject("SELECT username FROM user WHERE id=?", String.class, user), String.valueOf(p.get(1)), Boolean.parseBoolean(String.valueOf(p.get(2))), authOf(p));
+    }
+    private static int authOf(List<Object> p) {
+        try { return Integer.parseInt(String.valueOf(p.get(3))); } catch (RuntimeException e) { throw fail(401, "驗證已過期，請重新登入"); }
     }
 
     // ---- 已登入員工：重新產生備援碼（需目前的 TOTP） ----
-    @Transactional
     public List<String> regenerateBackupCodes(int user, String code) {
         requireAvailable();
-        var row = lock(user);
-        if (row == null || !truthy(row.get("enabled"))) throw fail(409, "尚未完成雙因素綁定");
-        if (!totp(user, row, code)) throw fail(400, "驗證碼不正確");
-        var out = newBackupCodes(user);
-        event(user, "BACKUP_REGEN", null, null);
+        reserveAccount(user, null);   // 與登入共用帳號層級額度，避免以 session 無限猜碼
+        List<String> out = tx.execute(st -> {
+            var row = lock(user, null);
+            if (row == null || !truthy(row.get("enabled"))) throw fail(409, "尚未完成雙因素綁定");
+            if (!totp(user, row, code)) return null;
+            var codes = newBackupCodes(user);
+            event(user, "BACKUP_REGEN", null, null);
+            return codes;
+        });
+        if (out == null) { failed(user); throw fail(400, "驗證碼不正確"); }
+        redis.delete("shop:mfa:fail:" + user);
         return out;
     }
 
@@ -219,9 +228,10 @@ public class StaffMfaService {
     }
 
     // ---- 內部 ----
-    /** 鎖序：員工列 → MFA 列。 */
-    private Map<String, Object> lock(int user) {
-        db.queryForList("SELECT id FROM user WHERE id=? FOR UPDATE", Integer.class, user);
+    /** 鎖序：員工列 → MFA 列。expectedAuth 非 null 時核對簽發 token 時的 auth_version（重設、停用、權限變更後舊流程失效）。 */
+    private Map<String, Object> lock(int user, Integer expectedAuth) {
+        var auth = db.queryForList("SELECT auth_version FROM user WHERE id=? AND is_stop='F' FOR UPDATE", Integer.class, user);
+        if (auth.isEmpty() || (expectedAuth != null && !expectedAuth.equals(auth.get(0)))) throw fail(401, "驗證已過期，請重新登入");
         var rows = db.queryForList("SELECT * FROM staff_mfa WHERE user_id=? FOR UPDATE", user);
         return rows.isEmpty() ? null : rows.get(0);
     }

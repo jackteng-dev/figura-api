@@ -45,8 +45,8 @@ public class AdminSessionService {
         if (mfa == null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "後台雙因素驗證尚未設定，暫停員工登入，請聯絡系統管理者");
         mfa.requireAvailable();
         var pending = new User();
-        if (mfa.enabled(user.getId())) { pending.setMfaRequired(true); pending.setMfaChallenge(mfa.challenge(user.getId(), device, remember)); }
-        else { pending.setMfaSetupRequired(true); pending.setMfaSetupToken(mfa.setupToken(user.getId(), device, remember)); }
+        if (mfa.enabled(user.getId())) { pending.setMfaRequired(true); pending.setMfaChallenge(mfa.challenge(user.getId(), user.getAuthVersion(), device, remember)); }
+        else { pending.setMfaSetupRequired(true); pending.setMfaSetupToken(mfa.setupToken(user.getId(), user.getAuthVersion(), device, remember)); }
         return pending;
     }
     /** 首次綁定完成（驗證碼正確）：發 session，並一次性回傳備援碼。 */
@@ -60,7 +60,8 @@ public class AdminSessionService {
     }
     private User sessionUser(StaffMfaService.Pending p) {
         User user = users.findByUserName(p.username());
-        if (user == null || user.getId() != p.user() || !"F".equals(user.getIsStop())) throw unauthorized();
+        // 驗證通過後才發 session：若期間被重設、停用或權限變更（auth_version 改變），拒絕把舊驗證結果套用到新版本
+        if (user == null || user.getId() != p.user() || !"F".equals(user.getIsStop()) || user.getAuthVersion() != p.authVersion() || !mfa.enabled(user.getId())) throw unauthorized();
         user.setPermissions(permissions(user.getId()));
         if (user.getPermissions().isEmpty()) throw unauthorized();
         return user;
