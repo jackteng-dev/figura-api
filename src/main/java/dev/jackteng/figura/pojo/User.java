@@ -32,4 +32,9 @@ public class User {
     /** 雙因素：密碼正確但尚未驗證時為 true，並回傳 challenge（此時不發 session）。 */
     @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) private Boolean mfaRequired;
     @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) private String mfaChallenge;
+    /** 強制雙因素：尚未綁定的員工密碼正確後回傳綁定 token，完成綁定才發 session。 */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) private Boolean mfaSetupRequired;
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) private String mfaSetupToken;
+    /** 只在完成綁定的那一次回傳的一次性備援碼。 */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) private java.util.List<String> backupCodes;
 }

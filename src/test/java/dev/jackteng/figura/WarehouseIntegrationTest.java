@@ -41,8 +41,8 @@ class WarehouseIntegrationTest extends ShopIntegrationSupport {
     private Map<String, Object> ref(JsonNode s) { return Map.of("id", s.path("id").asText(), "expectedVersion", s.path("version").asInt()); }
     private Client staff() throws Exception {
         var c = guest(); String device = uuid();
-        var r = mvc.perform(post("/figura/api/admin/login").contextPath("/figura").servletPath("/api/admin/login").cookie(c.cookies().toArray(Cookie[]::new)).header("X-XSRF-TOKEN", c.csrf())
-                .param("username", "shop_staff").param("password", System.getenv("DEMO_STAFF_PASSWORD")).param("deviceId", device)).andReturn();
+        var r = StaffLogin.complete(mvc, () -> mvc.perform(post("/figura/api/admin/login").contextPath("/figura").servletPath("/api/admin/login").cookie(c.cookies().toArray(Cookie[]::new)).header("X-XSRF-TOKEN", c.csrf())
+                .param("username", "shop_staff").param("password", System.getenv("DEMO_STAFF_PASSWORD")).param("deviceId", device)).andReturn());
         assertEquals(200, r.getResponse().getStatus()); String id = data(r).path("id").asText(); sessions.add("shop:session:" + id + ":" + device);
         return new Client(c.csrf(), List.of(c.cookies().get(0), cookie(r, "accessToken"), cookie(r, "refreshToken")), id);
     }

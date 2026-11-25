@@ -41,20 +41,35 @@ public class AdminSessionService {
         if (user == null || !"F".equals(user.getIsStop()) || !passwords.matches(password, user.getPassword())) throw unauthorized();
         user.setPermissions(permissions(user.getId()));
         if (user.getPermissions().isEmpty()) throw unauthorized();
-        if (mfa != null && mfa.enabled(user.getId())) {   // 雙因素：先回 challenge，驗證碼正確才發 session
-            var pending = new User(); pending.setMfaRequired(true); pending.setMfaChallenge(mfa.challenge(user.getId(), device, remember)); return pending;
-        }
-        return issue(user, device, remember, response);
+        // 強制雙因素：密碼正確只拿到 challenge（已綁定）或綁定 token（未綁定），都不是 session。金鑰未設定時拒絕，不降級。
+        if (mfa == null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "後台雙因素驗證尚未設定，暫停員工登入，請聯絡系統管理者");
+        mfa.requireAvailable();
+        var pending = new User();
+        if (mfa.enabled(user.getId())) { pending.setMfaRequired(true); pending.setMfaChallenge(mfa.challenge(user.getId(), device, remember)); }
+        else { pending.setMfaSetupRequired(true); pending.setMfaSetupToken(mfa.setupToken(user.getId(), device, remember)); }
+        return pending;
+    }
+    /** 首次綁定完成（驗證碼正確）：發 session，並一次性回傳備援碼。 */
+    public User completeEnrollment(String setupToken, String code, HttpServletResponse response) {
+        if (mfa == null) throw unauthorized();
+        var e = mfa.enroll(setupToken, code);
+        User user = sessionUser(e.pending());
+        user = issue(user, e.pending().device(), e.pending().remember(), response);
+        user.setBackupCodes(e.backupCodes());
+        return user;
+    }
+    private User sessionUser(StaffMfaService.Pending p) {
+        User user = users.findByUserName(p.username());
+        if (user == null || user.getId() != p.user() || !"F".equals(user.getIsStop())) throw unauthorized();
+        user.setPermissions(permissions(user.getId()));
+        if (user.getPermissions().isEmpty()) throw unauthorized();
+        return user;
     }
     /** 雙因素第二步：challenge＋驗證碼正確後才發 session（帳號狀態與權限重新核對）。 */
     public User completeMfa(String challenge, String code, HttpServletResponse response) {
         if (mfa == null) throw unauthorized();
         var p = mfa.verify(challenge, code);
-        User user = users.findByUserName(p.username());
-        if (user == null || user.getId() != p.user() || !"F".equals(user.getIsStop())) throw unauthorized();
-        user.setPermissions(permissions(user.getId()));
-        if (user.getPermissions().isEmpty()) throw unauthorized();
-        return issue(user, p.device(), p.remember(), response);
+        return issue(sessionUser(p), p.device(), p.remember(), response);
     }
     private User issue(User user, String device, boolean remember, HttpServletResponse response) {
         var claims = claims(user, device, UUID.randomUUID().toString(), remember);
@@ -85,6 +100,8 @@ public class AdminSessionService {
         User user = users.findByUserName((String) claims.get("username"));
         if (user == null || !"F".equals(user.getIsStop()) || !String.valueOf(user.getId()).equals(String.valueOf(claims.get("id")))
                 || !(claims.get("authVersion") instanceof Number epoch) || epoch.intValue()!=user.getAuthVersion()) throw unauthorized();
+        // 強制雙因素：沒有 MFA 標記的 session（含部署前發出的）一律無效，需重新登入
+        if (!"TOTP".equals(claims.get("mfa"))) throw unauthorized();
         return user;
     }
     private List<Permission> permissions(Integer id) { var list = roles.getUserBackendPermission(id); return list == null ? List.of() : list; }
@@ -100,7 +117,7 @@ public class AdminSessionService {
     }
     private String key(Map<String, Object> claims) { return "shop:session:" + claims.get("id") + ":" + claims.get("deviceId"); }
     private Map<String, Object> claims(User user, String device, String jti, boolean remember) {
-        return Map.of("id", user.getId(), "username", user.getUsername(), "deviceId", device, "jti", jti, "rememberMe", remember, "realm", "staff", "authVersion", user.getAuthVersion());
+        return Map.of("id", user.getId(), "username", user.getUsername(), "deviceId", device, "jti", jti, "rememberMe", remember, "realm", "staff", "authVersion", user.getAuthVersion(), "mfa", "TOTP");
     }
     private void writeCookies(HttpServletResponse response, Map<String, Object> claims) {
         boolean remember = Boolean.TRUE.equals(claims.get("rememberMe"));

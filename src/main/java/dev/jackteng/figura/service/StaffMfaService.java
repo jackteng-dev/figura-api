@@ -1,11 +1,16 @@
 package dev.jackteng.figura.service;
 
+import dev.jackteng.figura.pojo.CustomUserDetails;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
 import javax.crypto.Cipher;
@@ -21,126 +26,206 @@ import java.time.Duration;
 import java.util.*;
 
 /**
- * Commerce V2 Phase 7：員工 TOTP 雙因素（RFC 6238，SHA1／30 秒／6 位數，允許前後一個時間窗）。
- * - 自願啟用：未啟用者登入流程不變。啟用後密碼正確只拿到 5 分鐘有效的一次性 challenge，輸入驗證碼才發 session。
- * - 密鑰以 AES-GCM 加密存 DB，金鑰取自 MFA_ENCRYPTION_KEY（私有環境，未設定時無法啟用 MFA）。
- * - 同一時間窗的驗證碼只能用一次（last_step）；challenge 最多 5 次錯誤。
+ * 員工後台強制雙因素（TOTP，RFC 6238：SHA1／30 秒／6 位數，允許前後一個時間窗）。
+ * <ul>
+ * <li>所有員工（含系統管理員、店長）都必須綁定；顧客不受影響。</li>
+ * <li>密碼正確後：未綁定者取得 15 分鐘的「綁定 token」，已綁定者取得 5 分鐘的「驗證 challenge」。兩者都不是 session；
+ *     完成綁定或驗證後才由 {@link AdminSessionService} 發出帶 MFA 標記的 session。</li>
+ * <li>MFA_ENCRYPTION_KEY 未設定時拒絕員工登入（503），不降級為單因素。</li>
+ * <li>每次嘗試先以 Redis 原子扣次數：每個 token／challenge 最多 5 次、帳號 15 分鐘最多 10 次；成功時 DEL 原子消耗。</li>
+ * <li>同一時間窗的 TOTP 只能用一次；備援碼 10 組、一次性，只存 HMAC。</li>
+ * <li>鎖序：員工列 → MFA 列；重設為治理寫入：guard → 依 ID 全部員工 → MFA 列。</li>
+ * </ul>
  */
 @Service
 public class StaffMfaService {
     private static final String ISSUER = "Figura";
-    private static final Duration CHALLENGE_TTL = Duration.ofMinutes(5);
-    private final JdbcTemplate db; private final StringRedisTemplate redis; private final byte[] key; private final SecureRandom random = new SecureRandom();
+    private static final Duration CHALLENGE_TTL = Duration.ofMinutes(5), SETUP_TTL = Duration.ofMinutes(15), ACCOUNT_WINDOW = Duration.ofMinutes(15);
+    private static final int MAX_ACCOUNT_FAILURES = 10, BACKUP_CODES = 10;
+    private static final String BACKUP_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    private static final DefaultRedisScript<List> RESERVE = new DefaultRedisScript<>(
+            "if redis.call('EXISTS',KEYS[1])==0 then return nil end; local t=redis.call('HINCRBY',KEYS[1],'tries',1); "
+            + "if t>5 then redis.call('DEL',KEYS[1]); return nil end; return redis.call('HMGET',KEYS[1],'user','device','remember')", List.class);
+    private static final DefaultRedisScript<List> PEEK = new DefaultRedisScript<>(
+            "if redis.call('EXISTS',KEYS[1])==0 then return nil end; return redis.call('HMGET',KEYS[1],'user','device','remember')", List.class);
+    private static final DefaultRedisScript<Long> ACCOUNT = new DefaultRedisScript<>(
+            "local n=redis.call('INCR',KEYS[1]); if n==1 then redis.call('EXPIRE',KEYS[1],ARGV[1]) end; return n", Long.class);
 
-    private final org.springframework.transaction.support.TransactionTemplate tx;
-    public StaffMfaService(JdbcTemplate db, StringRedisTemplate redis, @Value("${MFA_ENCRYPTION_KEY:}") String secret, org.springframework.transaction.PlatformTransactionManager tm) {
-        this.db = db; this.redis = redis;
-        this.tx = new org.springframework.transaction.support.TransactionTemplate(tm);
-        byte[] k = null;
+    private final JdbcTemplate db; private final StringRedisTemplate redis; private final byte[] key; private final byte[] hmacKey;
+    private final TransactionTemplate tx; private final SecureRandom random = new SecureRandom();
+
+    public StaffMfaService(JdbcTemplate db, StringRedisTemplate redis, @Value("${MFA_ENCRYPTION_KEY:}") String secret, PlatformTransactionManager tm) {
+        this.db = db; this.redis = redis; this.tx = new TransactionTemplate(tm);
+        byte[] k = null, h = null;
         if (secret != null && secret.length() >= 32) {
-            try { k = MessageDigest.getInstance("SHA-256").digest(secret.getBytes(StandardCharsets.UTF_8)); } catch (Exception e) { throw new IllegalStateException(e); }
+            try {
+                var sha = MessageDigest.getInstance("SHA-256");
+                k = sha.digest(secret.getBytes(StandardCharsets.UTF_8));
+                h = sha.digest(("backup-codes|" + secret).getBytes(StandardCharsets.UTF_8));
+            } catch (Exception e) { throw new IllegalStateException(e); }
+        } else {
+            org.slf4j.LoggerFactory.getLogger(StaffMfaService.class).error("MFA_ENCRYPTION_KEY 未設定或少於 32 字元：員工後台登入將被拒絕（強制雙因素，不降級為單因素）");
         }
-        this.key = k;
+        this.key = k; this.hmacKey = h;
     }
     public boolean available() { return key != null; }
     private static ResponseStatusException fail(int s, String m) { return new ResponseStatusException(HttpStatus.valueOf(s), m); }
+    /** 強制 MFA：金鑰未設定時不得登入後台。 */
+    public void requireAvailable() { if (!available()) throw fail(503, "後台雙因素驗證尚未設定，暫停員工登入，請聯絡系統管理者"); }
 
-    public record Status(boolean available, boolean enabled, boolean pendingSetup) {}
+    public record Status(boolean available, boolean enabled, int backupCodesRemaining) {}
     public record Setup(String secret, String otpauthUri) {}
+    public record Pending(int user, String username, String device, boolean remember) {}
+    public record Enrolled(Pending pending, List<String> backupCodes) {}
 
     @Transactional(readOnly = true)
     public Status status(int user) {
-        var rows = db.queryForList("SELECT enabled FROM staff_mfa WHERE user_id=?", user);
-        boolean enabled = !rows.isEmpty() && truthy(rows.get(0).get("enabled"));
-        return new Status(available(), enabled, !rows.isEmpty() && !enabled);
+        return new Status(available(), enabled(user), db.queryForObject("SELECT COUNT(*) FROM staff_mfa_backup_code WHERE user_id=? AND used_at IS NULL", Integer.class, user));
     }
     public boolean enabled(int user) {
         var rows = db.queryForList("SELECT enabled FROM staff_mfa WHERE user_id=?", user);
         return !rows.isEmpty() && truthy(rows.get(0).get("enabled"));
     }
 
-    /** 產生新的密鑰（尚未啟用）；已啟用者需先停用。先鎖員工列再鎖 MFA 列，與 confirm／disable 同序，避免覆寫剛啟用的設定。 */
-    @Transactional
-    public Setup setup(int user, String username) {
-        if (!available()) throw fail(404, "雙因素驗證尚未在此環境啟用");
-        var row = lock(user);
-        if (row != null && truthy(row.get("enabled"))) throw fail(409, "已啟用雙因素驗證，請先停用再重新設定");
-        byte[] raw = new byte[20]; random.nextBytes(raw);
-        String b32 = base32(raw);
-        if (row == null) db.update("INSERT INTO staff_mfa(user_id,secret_enc,enabled) VALUES(?,?,FALSE)", user, encrypt(raw));
-        else if (db.update("UPDATE staff_mfa SET secret_enc=?,confirmed_at=NULL,last_step=0 WHERE user_id=? AND enabled=FALSE", encrypt(raw), user) != 1) throw fail(409, "雙因素狀態已變更，請重新整理");
-        event(user, "SETUP");
-        String label = URLEncoder.encode(ISSUER + ":" + username, StandardCharsets.UTF_8).replace("+", "%20");
-        return new Setup(b32, "otpauth://totp/" + label + "?secret=" + b32 + "&issuer=" + ISSUER + "&algorithm=SHA1&digits=6&period=30");
-    }
-    @Transactional
-    public Status confirm(int user, String code) {
-        var row = lock(user);
-        if (row == null) throw fail(409, "請先產生雙因素密鑰");
-        if (truthy(row.get("enabled"))) return status(user);
-        if (!check(user, row, code)) throw fail(400, "驗證碼不正確");
-        db.update("UPDATE staff_mfa SET enabled=TRUE,confirmed_at=CURRENT_TIMESTAMP(6) WHERE user_id=?", user);
-        event(user, "ENABLE");
-        return status(user);
-    }
-    @Transactional
-    public Status disable(int user, String code) {
-        var row = lock(user);
-        if (row == null || !truthy(row.get("enabled"))) throw fail(409, "尚未啟用雙因素驗證");
-        if (!check(user, row, code)) throw fail(400, "驗證碼不正確");
-        db.update("DELETE FROM staff_mfa WHERE user_id=?", user);
-        event(user, "DISABLE");
-        return status(user);
-    }
-
-    // ---- 登入 challenge ----
-    // Redis hash：user、device、remember、tries；期限在建立時設定一次，之後不延長。
-    private static final org.springframework.data.redis.core.script.DefaultRedisScript<java.util.List> RESERVE = new org.springframework.data.redis.core.script.DefaultRedisScript<>(
-            "if redis.call('EXISTS',KEYS[1])==0 then return nil end; local t=redis.call('HINCRBY',KEYS[1],'tries',1); "
-            + "if t>5 then redis.call('DEL',KEYS[1]); return nil end; return redis.call('HMGET',KEYS[1],'user','device','remember')", java.util.List.class);
-    private static final int MAX_ACCOUNT_FAILURES = 10;
-    private static final org.springframework.data.redis.core.script.DefaultRedisScript<Long> ACCOUNT = new org.springframework.data.redis.core.script.DefaultRedisScript<>(
-            "local n=redis.call('INCR',KEYS[1]); if n==1 then redis.call('EXPIRE',KEYS[1],ARGV[1]) end; return n", Long.class);
-    public String challenge(int user, String device, boolean remember) {
-        String id = UUID.randomUUID().toString(), k = "shop:mfa:challenge:" + id;
+    // ---- 登入：challenge（已綁定）與綁定 token（未綁定） ----
+    public String challenge(int user, String device, boolean remember) { return token("shop:mfa:challenge:", user, device, remember, CHALLENGE_TTL); }
+    public String setupToken(int user, String device, boolean remember) { return token("shop:mfa:setup:", user, device, remember, SETUP_TTL); }
+    private String token(String prefix, int user, String device, boolean remember, Duration ttl) {
+        String id = UUID.randomUUID().toString(), k = prefix + id;
         redis.opsForHash().putAll(k, Map.of("user", String.valueOf(user), "device", device, "remember", String.valueOf(remember), "tries", "0"));
-        redis.expire(k, CHALLENGE_TTL);
+        redis.expire(k, ttl);
         return id;
     }
-    public record Pending(int user, String username, String device, boolean remember) {}
-    /**
-     * 驗證 challenge＋驗證碼。每次嘗試先在 Redis 原子扣一次（最多 5 次、期限不延長）；成功時以 DEL 原子消耗，
-     * 併發請求只有一個能成功。帳號層級 15 分鐘內錯誤超過 10 次暫停驗證。失敗稽核以獨立交易保存。
-     */
-    // 不放在單一交易：鎖定與核對驗證碼在短交易內完成並提交，之後才寫失敗稽核（避免稽核等待自己持有的員工列鎖）。
-    public Pending verify(String challenge, String code) {
-        if (challenge == null || !challenge.matches("[0-9a-f-]{36}")) throw fail(401, "驗證已過期，請重新登入");
-        String k = "shop:mfa:challenge:" + challenge;
+    private static String valid(String token) {
+        if (token == null || !token.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) throw fail(401, "驗證已過期，請重新登入");
+        return token;
+    }
+    /** 帳號層級額度：核對前原子保留一次嘗試，超過上限 429。 */
+    private void reserveAccount(int user, String tokenKey) {
+        Long used = redis.execute(ACCOUNT, List.of("shop:mfa:fail:" + user), String.valueOf(ACCOUNT_WINDOW.toSeconds()));
+        if (used == null || used > MAX_ACCOUNT_FAILURES) { redis.delete(tokenKey); throw fail(429, "驗證錯誤次數過多，請 15 分鐘後再登入"); }
+    }
+    private void failed(int user) { tx.executeWithoutResult(st -> event(user, "LOGIN_FAIL", null, null)); }
+
+    /** 綁定第一步：以綁定 token 產生（或重新產生）待確認的密鑰。不計入嘗試次數，但 token 必須有效。 */
+    public Setup setup(String setupToken) {
+        requireAvailable();
+        String k = "shop:mfa:setup:" + valid(setupToken);
+        @SuppressWarnings("unchecked") List<Object> p = redis.execute(PEEK, List.of(k));
+        if (p == null || p.isEmpty() || p.get(0) == null) throw fail(401, "驗證已過期，請重新登入");
+        int user = Integer.parseInt(String.valueOf(p.get(0)));
+        return tx.execute(st -> {
+            var row = lock(user);
+            if (row != null && truthy(row.get("enabled"))) throw fail(409, "已完成雙因素綁定，請重新登入");
+            byte[] raw = new byte[20]; random.nextBytes(raw);
+            if (row == null) db.update("INSERT INTO staff_mfa(user_id,secret_enc,enabled) VALUES(?,?,FALSE)", user, encrypt(raw));
+            else db.update("UPDATE staff_mfa SET secret_enc=?,confirmed_at=NULL,last_step=0 WHERE user_id=? AND enabled=FALSE", encrypt(raw), user);
+            event(user, "SETUP", null, null);
+            String username = db.queryForObject("SELECT username FROM user WHERE id=?", String.class, user), b32 = base32(raw);
+            String label = URLEncoder.encode(ISSUER + ":" + username, StandardCharsets.UTF_8).replace("+", "%20");
+            return new Setup(b32, "otpauth://totp/" + label + "?secret=" + b32 + "&issuer=" + ISSUER + "&algorithm=SHA1&digits=6&period=30");
+        });
+    }
+
+    /** 綁定第二步：驗證碼正確 → 啟用、產生備援碼、消耗 token。之後由呼叫端發 session。 */
+    public Enrolled enroll(String setupToken, String code) {
+        requireAvailable();
+        String k = "shop:mfa:setup:" + valid(setupToken);
         @SuppressWarnings("unchecked") List<Object> p = redis.execute(RESERVE, List.of(k));
         if (p == null || p.isEmpty() || p.get(0) == null) throw fail(401, "驗證已過期，請重新登入");
         int user = Integer.parseInt(String.valueOf(p.get(0)));
-        // 帳號層級額度：核對驗證碼「之前」原子保留一次嘗試（INCR＋首次設定 TTL），併發請求也不會超過上限；成功才清除。
-        String failures = "shop:mfa:fail:" + user;
-        Long used = redis.execute(ACCOUNT, List.of(failures), String.valueOf(Duration.ofMinutes(15).toSeconds()));
-        if (used == null || used > MAX_ACCOUNT_FAILURES) { redis.delete(k); throw fail(429, "驗證錯誤次數過多，請 15 分鐘後再登入"); }
-        Boolean ok = tx.execute(st -> { var row = lock(user); return row != null && truthy(row.get("enabled")) && check(user, row, code); });
-        if (!Boolean.TRUE.equals(ok)) {
-            tx.executeWithoutResult(st -> event(user, "LOGIN_FAIL"));
-            throw fail(401, "驗證碼不正確");
-        }
+        reserveAccount(user, k);
+        List<String> codes = tx.execute(st -> {
+            var row = lock(user);
+            if (row == null || truthy(row.get("enabled")) || !totp(user, row, code)) return null;
+            db.update("UPDATE staff_mfa SET enabled=TRUE,confirmed_at=CURRENT_TIMESTAMP(6) WHERE user_id=?", user);
+            var out = newBackupCodes(user);
+            event(user, "ENROLL", null, null);
+            return out;
+        });
+        if (codes == null) { failed(user); throw fail(401, "驗證碼不正確，請確認驗證器 App 的時間與帳號"); }
+        if (!Boolean.TRUE.equals(redis.delete(k))) throw fail(401, "驗證已過期，請重新登入");
+        redis.delete("shop:mfa:fail:" + user);
+        return new Enrolled(pending(user, p), codes);
+    }
+
+    /** 已綁定員工的登入驗證：接受 6 位數 TOTP 或一次性備援碼。 */
+    public Pending verify(String challenge, String code) {
+        requireAvailable();
+        String k = "shop:mfa:challenge:" + valid(challenge);
+        @SuppressWarnings("unchecked") List<Object> p = redis.execute(RESERVE, List.of(k));
+        if (p == null || p.isEmpty() || p.get(0) == null) throw fail(401, "驗證已過期，請重新登入");
+        int user = Integer.parseInt(String.valueOf(p.get(0)));
+        reserveAccount(user, k);
+        String used = tx.execute(st -> {
+            var row = lock(user);
+            if (row == null || !truthy(row.get("enabled"))) return null;
+            if (totp(user, row, code)) return "TOTP";
+            if (backup(user, code)) { event(user, "BACKUP_USED", null, null); return "BACKUP"; }
+            return null;
+        });
+        if (used == null) { failed(user); throw fail(401, "驗證碼不正確"); }
         if (!Boolean.TRUE.equals(redis.delete(k))) throw fail(401, "驗證已過期，請重新登入");   // 被另一個併發請求消耗
-        redis.delete(failures);
-        tx.executeWithoutResult(st -> event(user, "LOGIN_OK"));
+        redis.delete("shop:mfa:fail:" + user);
+        tx.executeWithoutResult(st -> event(user, "LOGIN_OK", null, null));
+        return pending(user, p);
+    }
+    private Pending pending(int user, List<Object> p) {
         return new Pending(user, db.queryForObject("SELECT username FROM user WHERE id=?", String.class, user), String.valueOf(p.get(1)), Boolean.parseBoolean(String.valueOf(p.get(2))));
     }
 
-    /** 鎖序：員工列 → MFA 列（setup／confirm／disable／verify 一致）。 */
+    // ---- 已登入員工：重新產生備援碼（需目前的 TOTP） ----
+    @Transactional
+    public List<String> regenerateBackupCodes(int user, String code) {
+        requireAvailable();
+        var row = lock(user);
+        if (row == null || !truthy(row.get("enabled"))) throw fail(409, "尚未完成雙因素綁定");
+        if (!totp(user, row, code)) throw fail(400, "驗證碼不正確");
+        var out = newBackupCodes(user);
+        event(user, "BACKUP_REGEN", null, null);
+        return out;
+    }
+
+    /**
+     * 管理員重設其他員工的 MFA（遺失驗證器與備援碼）：刪除密鑰與備援碼、撤銷對方所有 session（auth_version+1），
+     * 對方下次登入需重新綁定。不可重設自己。requestId 冪等。
+     */
+    @Transactional
+    public boolean reset(int target, String requestId, String note, CustomUserDetails actor) {
+        String n = note == null ? "" : note.trim();
+        if (n.isEmpty() || n.length() > 500) throw fail(400, "請填寫重設原因（500 字內）");
+        if (actor == null) throw fail(403, "需要登入");
+        db.queryForObject("SELECT id FROM staff_access_guard WHERE id=1 FOR UPDATE", Integer.class);
+        db.queryForList("SELECT id FROM user ORDER BY id FOR UPDATE", Integer.class);
+        var prior = db.queryForList("SELECT user_id,actor_id,action,note FROM staff_mfa_event WHERE id=?", requestId);
+        if (!prior.isEmpty()) {
+            var e = prior.get(0);
+            if (!"RESET".equals(e.get("action")) || ((Number) e.get("user_id")).intValue() != target || !Objects.equals(((Number) e.get("actor_id")).intValue(), actor.getId()) || !n.equals(e.get("note")))
+                throw fail(409, "操作編號已用於不同內容");
+            return true;
+        }
+        Integer granted = db.queryForObject("SELECT COUNT(*) FROM user u JOIN user_role ur ON ur.user_id=u.id JOIN role r ON r.id=ur.role_id AND r.enabled=TRUE JOIN role_permission rp ON rp.role_id=r.id"
+                + " JOIN permissions_backend p ON p.id=rp.permission_id WHERE u.id=? AND u.is_stop='F' AND p.code='access.mfa.reset'", Integer.class, actor.getId());
+        if (granted == null || granted == 0) throw fail(403, "需要重設員工雙因素權限");
+        if (target == actor.getId()) throw fail(409, "不能重設自己的雙因素，請使用備援碼登入或請其他管理員協助");
+        if (db.queryForObject("SELECT COUNT(*) FROM user WHERE id=?", Integer.class, target) == 0) throw fail(404, "找不到員工");
+        db.queryForList("SELECT user_id FROM staff_mfa WHERE user_id=? FOR UPDATE", Integer.class, target);
+        db.update("DELETE FROM staff_mfa_backup_code WHERE user_id=?", target);
+        db.update("DELETE FROM staff_mfa WHERE user_id=?", target);
+        db.update("UPDATE user SET auth_version=auth_version+1 WHERE id=?", target);   // 撤銷既有 session
+        try { db.update("INSERT INTO staff_mfa_event(id,user_id,action,actor_id,note) VALUES(?,?,'RESET',?,?)", requestId, target, actor.getId(), n); }
+        catch (DuplicateKeyException e) { throw fail(409, "操作編號已被使用"); }
+        return false;
+    }
+
+    // ---- 內部 ----
+    /** 鎖序：員工列 → MFA 列。 */
     private Map<String, Object> lock(int user) {
         db.queryForList("SELECT id FROM user WHERE id=? FOR UPDATE", Integer.class, user);
         var rows = db.queryForList("SELECT * FROM staff_mfa WHERE user_id=? FOR UPDATE", user);
         return rows.isEmpty() ? null : rows.get(0);
     }
-    private boolean check(int user, Map<String, Object> row, String code) {
+    private boolean totp(int user, Map<String, Object> row, String code) {
         if (code == null || !code.matches("\\d{6}") || !available()) return false;
         byte[] secret = decrypt((String) row.get("secret_enc"));
         long now = System.currentTimeMillis() / 1000 / 30, last = ((Number) row.get("last_step")).longValue();
@@ -153,6 +238,28 @@ public class StaffMfaService {
         }
         return false;
     }
+    /** 備援碼：格式 XXXXX-XXXXX（不分大小寫、可省略連字號），原子標記已使用。 */
+    private boolean backup(int user, String code) {
+        if (code == null) return false;
+        String c = code.replace("-", "").replace(" ", "").toUpperCase(Locale.ROOT);
+        if (!c.matches("[" + BACKUP_ALPHABET + "]{10}")) return false;
+        return db.update("UPDATE staff_mfa_backup_code SET used_at=CURRENT_TIMESTAMP(6) WHERE user_id=? AND code_hash=? AND used_at IS NULL", user, hmac(c)) == 1;
+    }
+    private List<String> newBackupCodes(int user) {
+        db.update("DELETE FROM staff_mfa_backup_code WHERE user_id=?", user);
+        var out = new ArrayList<String>();
+        while (out.size() < BACKUP_CODES) {
+            var b = new StringBuilder();
+            for (int i = 0; i < 10; i++) b.append(BACKUP_ALPHABET.charAt(random.nextInt(BACKUP_ALPHABET.length())));
+            String c = b.toString();
+            if (db.update("INSERT IGNORE INTO staff_mfa_backup_code(user_id,code_hash) VALUES(?,?)", user, hmac(c)) == 1) out.add(c.substring(0, 5) + "-" + c.substring(5));
+        }
+        return out;
+    }
+    private String hmac(String value) {
+        try { var mac = Mac.getInstance("HmacSHA256"); mac.init(new SecretKeySpec(hmacKey, "HmacSHA256")); return HexFormat.of().formatHex(mac.doFinal(value.getBytes(StandardCharsets.US_ASCII))); }
+        catch (Exception e) { throw new IllegalStateException(e); }
+    }
     static String totp(byte[] secret, long step) {
         try {
             var mac = Mac.getInstance("HmacSHA1"); mac.init(new SecretKeySpec(secret, "HmacSHA1"));
@@ -162,7 +269,9 @@ public class StaffMfaService {
             return String.format("%06d", bin % 1_000_000);
         } catch (Exception e) { throw new IllegalStateException(e); }
     }
-    private void event(int user, String action) { db.update("INSERT INTO staff_mfa_event(id,user_id,action) VALUES(?,?,?)", UUID.randomUUID().toString(), user, action); }
+    private void event(int user, String action, Integer actor, String note) {
+        db.update("INSERT INTO staff_mfa_event(id,user_id,action,actor_id,note) VALUES(?,?,?,?,?)", UUID.randomUUID().toString(), user, action, actor, note);
+    }
     private String encrypt(byte[] plain) {
         try {
             byte[] iv = new byte[12]; random.nextBytes(iv);
@@ -183,11 +292,6 @@ public class StaffMfaService {
         for (byte b : data) { buffer = (buffer << 8) | (b & 0xff); bits += 8; while (bits >= 5) { out.append(alphabet.charAt((buffer >> (bits - 5)) & 31)); bits -= 5; } }
         if (bits > 0) out.append(alphabet.charAt((buffer << (5 - bits)) & 31));
         return out.toString();
-    }
-    static byte[] base32Decode(String s) {
-        String alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"; var out = new java.io.ByteArrayOutputStream(); int buffer = 0, bits = 0;
-        for (char ch : s.toCharArray()) { buffer = (buffer << 5) | alphabet.indexOf(ch); bits += 5; if (bits >= 8) { out.write((buffer >> (bits - 8)) & 0xff); bits -= 8; } }
-        return out.toByteArray();
     }
     private static boolean truthy(Object v) { return v instanceof Boolean b ? b : v instanceof Number n && n.intValue() != 0; }
 }

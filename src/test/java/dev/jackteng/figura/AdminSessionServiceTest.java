@@ -66,6 +66,27 @@ class AdminSessionServiceTest {
         assertThrows(ResponseStatusException.class,()->sessions.authenticate(jwt.genAccessToken(old)));
         assertThrows(ResponseStatusException.class,()->sessions.refresh(jwt.genRefreshToken(old),new MockHttpServletResponse()));
     }
+    @Test void correctPasswordWithoutMfaServiceIsRefusedNotDowngraded() {
+        when(users.findByUserName("staff")).thenReturn(user()); var p = new Permission(); p.setId(1); when(roles.getUserBackendPermission(1)).thenReturn(List.of(p));
+        var e = assertThrows(ResponseStatusException.class, () -> sessions.login("staff","test-password",device,false,new MockHttpServletResponse()));
+        assertEquals(503, e.getStatusCode().value()); verifyNoInteractions(redis);
+    }
+    @Test void missingEncryptionKeyRefusesStaffLogin() {
+        var mfa = new StaffMfaService(null, redis, "", null);
+        assertFalse(mfa.available());
+        assertEquals(503, assertThrows(ResponseStatusException.class, mfa::requireAvailable).getStatusCode().value());
+        var guarded = new AdminSessionService(users, roles, passwords, redis, jwt, mfa);
+        when(users.findByUserName("staff")).thenReturn(user()); var p = new Permission(); p.setId(1); when(roles.getUserBackendPermission(1)).thenReturn(List.of(p));
+        assertEquals(503, assertThrows(ResponseStatusException.class, () -> guarded.login("staff","test-password",device,false,new MockHttpServletResponse())).getStatusCode().value());
+        verifyNoInteractions(redis);
+    }
+    @Test void sessionWithoutMfaClaimIsRejected() {
+        ValueOperations operations=mock(ValueOperations.class);when(redis.opsForValue()).thenReturn(operations);when(operations.get(anyString())).thenReturn("session-id");
+        when(users.findByUserName("staff")).thenReturn(user());
+        assertThrows(ResponseStatusException.class,()->sessions.authenticate(jwt.genAccessToken(claims())));
+        var withMfa=new java.util.HashMap<String,Object>(claims()); withMfa.put("mfa","TOTP"); var p = new Permission(); p.setId(1); when(roles.getUserBackendPermission(1)).thenReturn(List.of(p));
+        assertEquals("staff", sessions.authenticate(jwt.genAccessToken(withMfa)).getUsername());
+    }
     @Test void malformedLogoutStillDeletesBothCookies() {
         var response = new MockHttpServletResponse(); sessions.logout("malformed", response);
         assertEquals(2,response.getHeaders("Set-Cookie").size()); assertTrue(response.getHeaders("Set-Cookie").stream().allMatch(c -> c.contains("Max-Age=0")));

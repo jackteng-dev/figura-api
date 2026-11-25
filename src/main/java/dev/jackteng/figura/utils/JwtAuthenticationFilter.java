@@ -22,7 +22,7 @@ import java.util.Set;
 
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
-    private static final Set<String> PUBLIC = Set.of("/api/admin/login", "/api/admin/login/mfa", "/api/admin/logout", "/api/auth/refresh", "/api/auth/csrf",
+    private static final Set<String> PUBLIC = Set.of("/api/admin/login", "/api/admin/login/mfa", "/api/admin/login/mfa/setup", "/api/admin/login/mfa/enroll", "/api/admin/logout", "/api/auth/refresh", "/api/auth/csrf",
             "/api/customer/auth/register", "/api/customer/auth/login", "/api/customer/auth/refresh", "/api/customer/auth/logout",
             "/api/customer/auth/email/verify", "/api/customer/auth/password/forgot", "/api/customer/auth/password/reset");
     private final AdminSessionService sessions;

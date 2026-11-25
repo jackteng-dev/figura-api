@@ -21,10 +21,10 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 @Service
 public class OpsService {
-    private final JdbcTemplate db; private final StringRedisTemplate redis; private final boolean ecpayLive;
+    private final JdbcTemplate db; private final StringRedisTemplate redis; private final boolean ecpayLive; private final StaffMfaService mfa;
     private static final AtomicLong ERRORS = new AtomicLong();
     private static final ConcurrentLinkedDeque<Map<String, Object>> RECENT = new ConcurrentLinkedDeque<>();
-    public OpsService(JdbcTemplate db, StringRedisTemplate redis, @Value("${shop.payments.ecpay.live:false}") boolean ecpayLive) { this.db = db; this.redis = redis; this.ecpayLive = ecpayLive; }
+    public OpsService(JdbcTemplate db, StringRedisTemplate redis, @Value("${shop.payments.ecpay.live:false}") boolean ecpayLive, StaffMfaService mfa) { this.db = db; this.redis = redis; this.ecpayLive = ecpayLive; this.mfa = mfa; }
 
     /** 由 GlobalExceptionHandler 呼叫；只記錄錯誤代碼、類型、路徑與時間。 */
     public static String recordError(Throwable e, String path) {
@@ -81,7 +81,8 @@ public class OpsService {
     }
 
     public record Status(boolean database, boolean redis, Map<String, Long> notifications, long warehouseOverdue, long adjustmentsPending, long ticketsWaiting,
-                         long pagesInReview, long serverErrors, List<Map<String, Object>> recentErrors, LocalDateTime checkedAt) {}
+                         long pagesInReview, long serverErrors, List<Map<String, Object>> recentErrors, LocalDateTime checkedAt,
+                         boolean mfaAvailable, long staffActive, long staffMfaEnrolled) {}
     public Status status() {
         boolean dbOk; try { dbOk = Objects.equals(db.queryForObject("SELECT 1", Integer.class), 1); } catch (Exception e) { dbOk = false; }
         boolean redisOk; try { redisOk = "PONG".equalsIgnoreCase(Objects.requireNonNull(redis.getConnectionFactory()).getConnection().ping()); } catch (Exception e) { redisOk = false; }
@@ -92,6 +93,8 @@ public class OpsService {
                 dbOk ? n(db.queryForObject("SELECT COUNT(*) FROM shipping_adjustment WHERE status='PENDING_REVIEW'", Long.class)) : -1,
                 dbOk ? n(db.queryForObject("SELECT COUNT(*) FROM support_ticket WHERE status='WAITING_STAFF'", Long.class)) : -1,
                 dbOk ? n(db.queryForObject("SELECT COUNT(*) FROM site_page WHERE status='IN_REVIEW'", Long.class)) : -1,
-                ERRORS.get(), List.copyOf(RECENT), LocalDateTime.now());
+                ERRORS.get(), List.copyOf(RECENT), LocalDateTime.now(), mfa.available(),
+                dbOk ? n(db.queryForObject("SELECT COUNT(*) FROM user WHERE is_stop='F'", Long.class)) : -1,
+                dbOk ? n(db.queryForObject("SELECT COUNT(*) FROM user u JOIN staff_mfa m ON m.user_id=u.id AND m.enabled=TRUE WHERE u.is_stop='F'", Long.class)) : -1);
     }
 }

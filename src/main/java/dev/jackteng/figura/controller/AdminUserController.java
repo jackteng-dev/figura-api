@@ -89,11 +89,21 @@ public class AdminUserController {
         return Result.success(sessions.completeMfa(in.challenge(), in.code(), response));
     }
     @Autowired private dev.jackteng.figura.service.StaffMfaService mfa;
+    /** 強制綁定：以密碼登入取得的綁定 token 產生密鑰，再以驗證碼完成綁定（之後才發 session）。 */
+    public record MfaSetupToken(@jakarta.validation.constraints.NotBlank String setupToken) {}
+    public record MfaEnroll(@jakarta.validation.constraints.NotBlank String setupToken, @jakarta.validation.constraints.NotBlank String code) {}
+    @PostMapping("/login/mfa/setup") public Result<dev.jackteng.figura.service.StaffMfaService.Setup> loginMfaSetup(@RequestBody @jakarta.validation.Valid MfaSetupToken in) { return Result.success(mfa.setup(in.setupToken())); }
+    @PostMapping("/login/mfa/enroll") public Result<User> loginMfaEnroll(@RequestBody @jakarta.validation.Valid MfaEnroll in, HttpServletResponse response) { return Result.success(sessions.completeEnrollment(in.setupToken(), in.code(), response)); }
     public record MfaCode(@jakarta.validation.constraints.NotBlank String code) {}
     @GetMapping("/mfa") public Result<dev.jackteng.figura.service.StaffMfaService.Status> mfaStatus(@AuthenticationPrincipal CustomUserDetails me) { return Result.success(mfa.status(me.getId())); }
-    @PostMapping("/mfa/setup") public Result<dev.jackteng.figura.service.StaffMfaService.Setup> mfaSetup(@AuthenticationPrincipal CustomUserDetails me) { return Result.success(mfa.setup(me.getId(), me.getUsername())); }
-    @PostMapping("/mfa/confirm") public Result<dev.jackteng.figura.service.StaffMfaService.Status> mfaConfirm(@AuthenticationPrincipal CustomUserDetails me, @RequestBody @jakarta.validation.Valid MfaCode in) { return Result.success(mfa.confirm(me.getId(), in.code())); }
-    @PostMapping("/mfa/disable") public Result<dev.jackteng.figura.service.StaffMfaService.Status> mfaDisable(@AuthenticationPrincipal CustomUserDetails me, @RequestBody @jakarta.validation.Valid MfaCode in) { return Result.success(mfa.disable(me.getId(), in.code())); }
+    @PostMapping("/mfa/backup-codes") public Result<java.util.List<String>> mfaBackupCodes(@AuthenticationPrincipal CustomUserDetails me, @RequestBody @jakarta.validation.Valid MfaCode in) { return Result.success(mfa.regenerateBackupCodes(me.getId(), in.code())); }
+    public record MfaReset(@jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Pattern(regexp = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}") String requestId,
+                           @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max = 500) String note) {}
+    public record MfaResetResult(int staffId, boolean replayed) {}
+    /** 管理員重設其他員工的雙因素（權限 access.mfa.reset）；對方 session 立即失效，下次登入重新綁定。 */
+    @PostMapping("/access/staff/{id}/mfa/reset") public Result<MfaResetResult> mfaReset(@PathVariable int id, @RequestBody @jakarta.validation.Valid MfaReset in, @AuthenticationPrincipal CustomUserDetails me) {
+        return Result.success(new MfaResetResult(id, mfa.reset(id, in.requestId(), in.note(), me)));
+    }
 
     @PostMapping("/logout")
     public Result<Void> logout(HttpServletRequest request, HttpServletResponse response) {
