@@ -45,7 +45,7 @@
 
 ## 篩選選項 `GET /catalog/facets`
 
-參數同搜尋（不含 availability、sort、分頁），回傳在目前條件下各選項的 `{value,label,count}`：brands、works、categories、manufacturers、availability、scales、materials、productTypes、editions，以及 `priceMin`、`priceMax`、`total`。只計上架商品。
+參數同搜尋（不含 sort、分頁）；`availability` 套用到其他選項與 total／價格範圍，但 `availability` 本身的筆數不套用（方便切換）。回傳在目前條件下各選項的 `{value,label,count}`：brands、works、categories、manufacturers、availability、scales、materials、productTypes、editions，以及 `priceMin`、`priceMax`、`total`。只計上架商品。
 
 ## 索引（V26）
 

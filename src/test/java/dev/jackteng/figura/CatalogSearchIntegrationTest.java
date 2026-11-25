@@ -72,6 +72,10 @@ class CatalogSearchIntegrationTest extends ShopIntegrationSupport {
         assertEquals(Map.of("PVC", 2, "ABS", 1), mats);
         var avail = new HashMap<String, Integer>(); f.path("availability").forEach(m -> avail.put(m.path("value").asText(), m.path("count").asInt()));
         assertEquals(Map.of("IN_STOCK", 1, "PREORDER", 1, "SOLD_OUT", 1), avail);
+        // 選了可售狀態：其他 facets 套用，可售狀態本身仍列出全部選項
+        var fp = data(ok(guest(), "GET", "/catalog/facets?q=" + enc(tag) + "&availability=PREORDER", null, 200));
+        assertEquals(1, fp.path("total").asInt()); assertEquals(5200, fp.path("priceMin").asInt());
+        assertEquals(3, fp.path("availability").size());
     }
 
     @Test void validationAndLegacyCompatibility() throws Exception {

@@ -145,16 +145,16 @@ public class CatalogService {
     private List<FacetValue> group(String expr,String labelExpr,String where,org.springframework.jdbc.core.namedparam.MapSqlParameterSource args){
         return sql.query("SELECT "+expr+" v,"+labelExpr+" l,COUNT(*) c"+where+" AND "+expr+" IS NOT NULL GROUP BY v,l ORDER BY c DESC,l",args,(r,n)->new FacetValue(r.getString("v"),r.getString("l"),r.getLong("c")));
     }
-    /** 篩選選項與筆數：以目前搜尋條件（不含可售狀態本身）計算，只算上架商品。 */
+    /** 篩選選項與筆數：套用目前全部條件；只有「可售狀態」本身的筆數不套用可售狀態（多選時各選項仍顯示可選數）。只算上架商品。 */
     @Transactional(readOnly=true) public Facets facets(Search s){
-        var args=new org.springframework.jdbc.core.namedparam.MapSqlParameterSource();String where=where(s,args,false);
+        var args=new org.springframework.jdbc.core.namedparam.MapSqlParameterSource();String anyAvail=where(s,args,false),where=where(s,args,true);
         var materials=new TreeMap<String,Long>();
         for(var row:sql.queryForList("SELECT p.materials m"+where+" AND p.content_origin='REAL' AND p.materials IS NOT NULL",args))for(String m:String.valueOf(row.get("m")).split(","))materials.merge(m,1L,Long::sum);
         var price=sql.queryForMap("SELECT MIN("+MIN_PRICE+") lo,MAX("+MIN_PRICE+") hi,COUNT(*) c"+where,args);
         return new Facets(group("p.brand_id","(SELECT name FROM catalog_brand x WHERE x.id=p.brand_id)",where,args),
                 group("p.work_id","(SELECT name FROM catalog_work x WHERE x.id=p.work_id)",where,args),
                 group("p.category_id","(SELECT name FROM catalog_category x WHERE x.id=p.category_id)",where,args),
-                group("p.manufacturer","p.manufacturer",where,args),group(AVAIL,AVAIL,where,args),
+                group("p.manufacturer","p.manufacturer",where,args),group(AVAIL,AVAIL,anyAvail,args),
                 group("p.scale","p.scale",where,args),materials.entrySet().stream().map(e->new FacetValue(e.getKey(),e.getKey(),e.getValue())).toList(),
                 group("p.product_type","p.product_type",where,args),group("p.edition","p.edition",where,args),
                 price.get("lo")==null?null:((Number)price.get("lo")).intValue(),price.get("hi")==null?null:((Number)price.get("hi")).intValue(),((Number)price.get("c")).longValue());
