@@ -104,7 +104,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     || (matcher.match("/api/customer/product-alerts/*",path)&&method.equals("PUT"))
                     || (path.equals("/api/customer/notification-preferences")&&(method.equals("GET")||method.equals("PUT")))
                     || (path.equals("/api/customer/notifications")&&method.equals("GET"))
-                    || (path.equals("/api/customer/notifications/read")&&method.equals("POST"));
+                    || (path.equals("/api/customer/notifications/read")&&method.equals("POST"))
+                    // Commerce V2 Phase 5：出貨單合併與私人倉庫
+                    || (path.equals("/api/customer/shipments")&&method.equals("GET"))
+                    || (path.equals("/api/customer/shipments/merge")&&method.equals("POST"))
+                    || ((matcher.match("/api/customer/shipments/*/hold",path)||matcher.match("/api/customer/shipments/*/release",path))&&method.equals("POST"));
     }
     private void error(HttpServletResponse response, int status, String message) throws IOException {
         response.setStatus(status); response.setContentType("application/json"); response.setCharacterEncoding("UTF-8");

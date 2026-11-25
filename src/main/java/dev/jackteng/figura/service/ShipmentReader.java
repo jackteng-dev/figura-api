@@ -96,7 +96,7 @@ public class ShipmentReader {
 
     Shipment view(Map<String, Object> s) {
         String id = (String) s.get("id");
-        var members = members(id); var st = status(members);
+        var members = members(id); var st = s.get("merged_into") != null ? new String[]{"MERGED", null} : status(members);
         // 經單筆端點出貨的訂單：出貨／送達時間取自訂單
         Object shipped = s.get("shipped_at") != null ? s.get("shipped_at") : firstTime(members, "shipped_at", true);
         Object delivered = s.get("delivered_at") != null ? s.get("delivered_at") : st[0].equals("DELIVERED") ? firstTime(members, "delivered_at", false) : null;
@@ -107,7 +107,7 @@ public class ShipmentReader {
         return new Shipment(id, (String) s.get("method"), (String) s.get("method_name"), (String) s.get("strategy"), ((Number) s.get("fee_twd")).intValue(),
                 ((Number) s.get("goods_twd")).longValue(), st[0], st[1], (String) s.get("carrier"), tracking, time(shipped), time(delivered),
                 destination, members.stream().map(m -> new ShipmentOrder(m.kind(), m.id(), m.title(), m.status(), m.fulfillment())).toList(),
-                ((Number) s.get("version")).intValue(), time(s.get("created_at")));
+                ((Number) s.get("version")).intValue(), time(s.get("created_at")), (String) s.get("merged_into"), time(s.get("held_at")), time(s.get("storage_until")));
     }
     private Object firstTime(List<Member> members, String column, boolean min) {
         Object best = null;
@@ -136,9 +136,10 @@ public class ShipmentReader {
         var rows = db.queryForList(SELECT + " JOIN shipment_item i ON i.shipment_id=s.id WHERE " + (kind.equals("STOCK") ? "i.stock_order_id=?" : "i.preorder_order_id=?"), orderId);
         return rows.isEmpty() ? null : view(rows.get(0));
     }
-    /** 訂單是否屬於「多張訂單合併的出貨單」：這種訂單只能整張出貨單一起出貨。 */
+    /** 訂單是否只能經出貨單處理：屬於多張訂單合併的出貨單，或出貨單暫存在私人倉庫（暫存中不可出貨）。 */
     public boolean combined(String kind, String orderId) {
-        return db.queryForObject("SELECT COUNT(*) FROM shipment_item i JOIN shipment_item o ON o.shipment_id=i.shipment_id WHERE "
-                + (kind.equals("STOCK") ? "i.stock_order_id=?" : "i.preorder_order_id=?"), Integer.class, orderId) > 1;
+        String where = kind.equals("STOCK") ? "i.stock_order_id=?" : "i.preorder_order_id=?";
+        return db.queryForObject("SELECT COUNT(*) FROM shipment_item i JOIN shipment_item o ON o.shipment_id=i.shipment_id WHERE " + where, Integer.class, orderId) > 1
+                || db.queryForObject("SELECT COUNT(*) FROM shipment_item i JOIN shipment s ON s.id=i.shipment_id WHERE s.held_at IS NOT NULL AND " + where, Integer.class, orderId) > 0;
     }
 }

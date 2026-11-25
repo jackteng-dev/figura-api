@@ -57,15 +57,15 @@ public class ShipmentService {
                 && members.stream().anyMatch(m -> !m.closed() && "SHIPPED".equals(m.fulfillment()))
                 // 經舊單筆端點出貨的預購（mock_pre_ 貨件號）只能用原單筆端點送達
                 && (s.get("tracking_number") != null || (v.trackingNumber() != null && v.trackingNumber().startsWith("MOCK-") && v.trackingNumber().length() <= 41));
-        boolean ship = v.status().equals("READY") || ("FEE".equals(v.waitingFor()) && ShipmentReader.allReady(members));
+        boolean ship = v.heldAt() == null && (v.status().equals("READY") || ("FEE".equals(v.waitingFor()) && ShipmentReader.allReady(members)));
         return new Detail(v, mockEnabled, mockEnabled && ship, mockEnabled && clean && v.status().equals("SHIPPED"),
                 db.query("SELECT * FROM shipment_event WHERE shipment_id=? ORDER BY created_at,request_id", events, v.id()));
     }
     @Transactional(readOnly = true) public Detail detail(String id) { return detail(row(id, false)); }
     @Transactional(readOnly = true) public Page list(int page, int size) {
         if (page < 1 || page > 100000 || size < 1 || size > 50) throw fail(400, "分頁參數不正確");
-        var items = db.queryForList(ShipmentReader.SELECT + " ORDER BY s.created_at DESC, s.id DESC LIMIT ? OFFSET ?", size, (page - 1) * size).stream().map(reader::view).toList();
-        return new Page(items, page, size, db.queryForObject("SELECT COUNT(*) FROM shipment", Long.class));
+        var items = db.queryForList(ShipmentReader.SELECT + " WHERE s.merged_into IS NULL ORDER BY s.created_at DESC, s.id DESC LIMIT ? OFFSET ?", size, (page - 1) * size).stream().map(reader::view).toList();
+        return new Page(items, page, size, db.queryForObject("SELECT COUNT(*) FROM shipment WHERE merged_into IS NULL", Long.class));
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -100,6 +100,8 @@ public class ShipmentService {
         }
         int version = ((Number) s.get("version")).intValue();
         if (version != in.expectedVersion()) throw fail(409, "出貨單已變更，請重新核對");
+        if (s.get("merged_into") != null) throw fail(409, "出貨單已併入其他出貨單，請改用合併後的出貨單");
+        if (action.equals("SHIP") && s.get("held_at") != null) throw fail(409, "顧客已將這張出貨單暫存在私人倉庫，請先解除暫存再出貨");
         var members = reader.members(id);
         String status = ShipmentReader.status(members)[0];
         String tracking;

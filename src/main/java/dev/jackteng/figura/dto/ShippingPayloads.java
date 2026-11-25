@@ -22,12 +22,14 @@ public final class ShippingPayloads {
     /** 出貨單內的一張訂單（顧客只看得到自己的）。 */
     public record ShipmentOrder(String kind, String id, String title, String status, String fulfillmentStatus) {}
     /**
-     * status 由訂單狀態推導：WAITING（等付款／到貨）、READY（可出貨）、SHIPPED、DELIVERED、CANCELLED（全部訂單已結束）。
+     * status 由訂單狀態推導：WAITING（等付款／到貨）、READY（可出貨）、SHIPPED、DELIVERED、CANCELLED（全部訂單已結束）；
+     * MERGED＝已併入 mergedInto 那張出貨單。heldAt／storageUntil 非 null＝顧客暫存在私人倉庫中，暫存期間不出貨。
      * carrier 一律 TEST、trackingNumber 為測試貨件號，不代表實際物流。
      */
     public record Shipment(String id, String method, String methodName, String strategy, int feeTwd, long goodsTwd, String status, String waitingFor,
                            String carrier, String trackingNumber, OffsetDateTime shippedAt, OffsetDateTime deliveredAt,
-                           Map<String, Object> destination, List<ShipmentOrder> orders, int version, OffsetDateTime createdAt) {}
+                           Map<String, Object> destination, List<ShipmentOrder> orders, int version, OffsetDateTime createdAt,
+                           String mergedInto, OffsetDateTime heldAt, OffsetDateTime storageUntil) {}
     public record Event(String requestId, String shipmentId, int actorId, String actorUsername, String action, String note,
                         int beforeVersion, int afterVersion, String trackingNumber, OffsetDateTime createdAt) {}
     public record Detail(Shipment shipment, boolean mockEnabled, boolean canShip, boolean canDeliver, List<Event> events) {}
