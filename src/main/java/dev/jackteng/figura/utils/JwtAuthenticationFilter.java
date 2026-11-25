@@ -32,7 +32,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain) throws ServletException, IOException {
         String path = request.getServletPath();
-        if ("GET".equals(request.getMethod()) && (path.equals("/api/catalog/preorders") || matcher.match("/api/catalog/preorders/*",path) || path.equals("/api/catalog/products") || path.equals("/api/catalog/facets") || matcher.match("/api/catalog/products/*",path) || matcher.match("/api/catalog/products/*/image/*",path) || matcher.match("/api/catalog/products/*/image",path) || path.startsWith("/api/seo/"))) {
+        if ("GET".equals(request.getMethod()) && (path.equals("/api/catalog/preorders") || matcher.match("/api/catalog/preorders/*",path) || path.equals("/api/catalog/products") || path.equals("/api/catalog/facets") || matcher.match("/api/catalog/products/*",path) || matcher.match("/api/catalog/products/*/image/*",path) || matcher.match("/api/catalog/products/*/image",path) || path.startsWith("/api/seo/") || path.equals("/api/site-pages") || matcher.match("/api/site-pages/*",path))) {
             chain.doFilter(request,response); return;
         }
         if ("POST".equals(request.getMethod()) && (path.equals("/api/payments/mock/callback") || path.equals("/api/preorder-payments/mock/callback") || path.equals("/api/payments/ecpay/callback"))) { chain.doFilter(request,response); return; }
@@ -108,7 +108,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     // Commerce V2 Phase 5：出貨單合併與私人倉庫
                     || (path.equals("/api/customer/shipments")&&method.equals("GET"))
                     || (path.equals("/api/customer/shipments/merge")&&method.equals("POST"))
-                    || ((matcher.match("/api/customer/shipments/*/hold",path)||matcher.match("/api/customer/shipments/*/release",path))&&method.equals("POST"));
+                    || ((matcher.match("/api/customer/shipments/*/hold",path)||matcher.match("/api/customer/shipments/*/release",path))&&method.equals("POST"))
+                    // Commerce V2 Phase 6：客服單與物流追蹤
+                    || (matcher.match("/api/customer/shipments/*/tracking",path)&&method.equals("GET"))
+                    || (path.equals("/api/customer/support-tickets")&&(method.equals("GET")||method.equals("POST")))
+                    || (matcher.match("/api/customer/support-tickets/*",path)&&method.equals("GET"))
+                    || (matcher.match("/api/customer/support-tickets/*/messages",path)&&method.equals("POST"));
     }
     private void error(HttpServletResponse response, int status, String message) throws IOException {
         response.setStatus(status); response.setContentType("application/json"); response.setCharacterEncoding("UTF-8");

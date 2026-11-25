@@ -18,7 +18,8 @@ final class NoticeText {
             Map.entry("PREORDER_ALLOCATED", "預購商品已到貨"), Map.entry("PREORDER_SHIPPED", "預購商品已出貨"), Map.entry("PREORDER_DELIVERED", "預購商品已送達"),
             Map.entry("PREORDER_BALANCE_DUE", "預購尾款待付款"), Map.entry("PREORDER_DELAYED", "預購到貨時間延後"), Map.entry("PREORDER_RESCHEDULED", "預購時程已調整"),
             Map.entry("PRODUCT_RESTOCK", "商品補貨了"), Map.entry("PRODUCT_PREORDER_OPEN", "開放預購"), Map.entry("PRODUCT_PREORDER_CLOSING", "預購即將截止"),
-            Map.entry("PRODUCT_RELEASE", "商品已到發售時間"), Map.entry("WAREHOUSE_STORAGE_ENDING", "倉庫暫存即將到期"));
+            Map.entry("PRODUCT_RELEASE", "商品已到發售時間"), Map.entry("WAREHOUSE_STORAGE_ENDING", "倉庫暫存即將到期"),
+            Map.entry("SHIPMENT_ARRIVED_STORE", "包裹已到取貨門市"), Map.entry("SHIPMENT_EXCEPTION", "包裹配送異常"));
 
     static boolean isProduct(String kind) { return kind.startsWith("PRODUCT_"); }
 
@@ -31,6 +32,8 @@ final class NoticeText {
             case "PRODUCT_PREORDER_OPEN" -> "你關注的「" + name + "」已開放預購" + deadline(p) + "。";
             case "PRODUCT_PREORDER_CLOSING" -> "「" + name + "」的預購即將截止" + deadline(p) + "。";
             case "WAREHOUSE_STORAGE_ENDING" -> "你暫存在私人倉庫的出貨單將於 " + p.path("storageUntil").asText("").replace('T', ' ').replaceAll("[.].*$", "") + " 到期，請到「我的出貨」安排寄送或延長。";
+            case "SHIPMENT_ARRIVED_STORE" -> "你的包裹已到取貨門市，請攜帶證件取貨（測試物流）。";
+            case "SHIPMENT_EXCEPTION" -> "你的包裹配送異常，客服會與你聯繫；也可以到「客服中心」詢問（測試物流）。";
             case "PRODUCT_RELEASE" -> "「" + name + "」已到預計發售時間；實際供貨請以商品頁為準。";
             default -> {
                 String id = p.path("orderId").asText("");
