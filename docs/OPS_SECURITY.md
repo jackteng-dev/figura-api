@@ -1,4 +1,4 @@
-# 後台安全與營運（Commerce V2 Phase 7，V30–V31）
+# 後台安全與營運（Commerce V2 Phase 7，V30–V33）
 
 ## 員工雙因素（TOTP，強制，V30＋V31）
 
@@ -23,7 +23,12 @@
 
 ### 備援碼與復原
 
-- 綁定時產生 10 組一次性備援碼，只存 HMAC-SHA256（金鑰衍生自 `MFA_ENCRYPTION_KEY`）。已登入員工可在「帳號安全」以目前 TOTP 重新產生（舊碼全部失效）。
+- 綁定時產生 10 組一次性備援碼，只存 HMAC-SHA256（金鑰衍生自 `MFA_ENCRYPTION_KEY`）。已登入員工可在「帳號安全」以目前 TOTP 重新產生（不接受備援碼；舊碼在同一交易刪除、立即失效）。
+- **下載與保存確認（V32）**：原始備援碼只在綁定或重新產生的那一次回應中出現（附帳號與產生時間），Web 以該回應在瀏覽器端產生 `Figura-MFA-Recovery-Codes.txt`（UTF-8，含標題、帳號、產生日期、10 組碼、保存提醒）並觸發下載；Blob URL 立即釋放，不經伺服器、不放 URL、不寫入 localStorage／sessionStorage／pinia、伺服器不記錄。之後無法再取得原始碼，只能重新產生。
+- **必須保存者**：具 `access.mfa.reset` 權限的員工（系統管理員／店長，依權限判斷不寫死帳號）。每次產生備援碼都有新的批次 ID（`staff_mfa.backup_batch_id`，V33）；是否待確認**依目前權限即時判斷**：具該權限且（`backup_batch_id` 為空，或 `backup_confirmed_batch_id ≠ backup_batch_id`）。部署前已綁定、沒有批次的帳號因此也會被要求重新產生並保存。因此員工被升權後即使先前略過，也會立即被要求重新產生、下載並確認。在 `POST /admin/mfa/backup-codes/ack {batchId, downloaded:true, confirmed:true}`（batchId 必須是目前這批，舊批次 409）之前，除 `GET /auth/me`、`GET /admin/mfa`、`POST /admin/mfa/backup-codes`、`/ack` 外的 API 一律 403（`errorCode=MFA_BACKUP_ACK_REQUIRED`），前端導向「帳號安全」。改網址、重新整理或重新登入都無法略過；原始碼已離開畫面時需重新產生再下載。
+- **其他員工**：可下載或略過（`{batchId, downloaded:false}` 寫 `BACKUP_SKIP` 稽核），不阻擋。
+- V32 的 `backup_ack_pending` 欄位已由 V33 批次機制取代，不再使用（保留以維持已套用 migration 的 checksum）。
+- **限制**：伺服器只能記錄「頁面已觸發下載並勾選確認」（`BACKUP_ACK`），**無法確認檔案確實存到安全位置**；稽核與介面文字都依此表述。
 - 遺失手機：用備援碼登入，再到帳號安全重新產生備援碼；換手機需請管理員重設。
 - 手機與備援碼都遺失：有 `access.mfa.reset` 權限的管理員在「員工管理」按「重設雙因素」（`POST /admin/access/staff/{id}/mfa/reset {requestId, note}`）。刪除對方密鑰與備援碼、`auth_version+1` 立即撤銷對方所有 session，對方下次登入重新綁定。**不能重設自己**；同 requestId 冪等；寫稽核（actor、原因）。
 - **最後一位管理員也遺失**（沒有其他人能重設）：由 DBA 在受控程序中處理——備份後在 DB 執行 `DELETE FROM staff_mfa_backup_code WHERE user_id=?; DELETE FROM staff_mfa WHERE user_id=?; UPDATE user SET auth_version=auth_version+1 WHERE id=?;`，並在變更紀錄寫明原因。建議至少維持兩位具重設權限的管理員。

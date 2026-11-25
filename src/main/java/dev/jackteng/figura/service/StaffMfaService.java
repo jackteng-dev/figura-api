@@ -102,7 +102,9 @@ public class StaffMfaService {
         var rows = db.queryForList("SELECT backup_batch_id,backup_confirmed_batch_id FROM staff_mfa WHERE user_id=? AND enabled=TRUE", user);
         if (rows.isEmpty()) return false;
         var r = rows.get(0);
-        return !Objects.equals(r.get("backup_batch_id"), r.get("backup_confirmed_batch_id")) && backupRequired(user);
+        // 沒有批次（V33 之前綁定的舊資料）一律視為未確認，必須重新產生並保存
+        Object batch = r.get("backup_batch_id");
+        return (batch == null || !batch.equals(r.get("backup_confirmed_batch_id"))) && backupRequired(user);
     }
     /** 產生新的一批備援碼（呼叫端已持有員工列與 MFA 列鎖）；舊批次與其確認一併失效。 */
     private BackupCodes issueBackupCodes(int user) {

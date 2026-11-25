@@ -71,6 +71,10 @@ class OpsIntegrationTest extends ShopIntegrationSupport {
         assertEquals(400, call(fresh, "POST", "/admin/mfa/backup-codes/ack", Map.of("batchId", eb.path("backupBatchId").asText(), "downloaded", true, "confirmed", false)).getResponse().getStatus(), "需勾選保存確認");
         assertFalse(data(ok(fresh, "POST", "/admin/mfa/backup-codes/ack", Map.of("batchId", eb.path("backupBatchId").asText(), "downloaded", true, "confirmed", true), 200)).path("backupAckPending").asBoolean());
         assertEquals(200, call(fresh, "GET", "/admin/reports/low-stock", null).getResponse().getStatus(), "確認後可使用業務 API");
+        // V33 之前綁定的舊資料（沒有批次）：視為未確認，不能被放行
+        jdbc.update("UPDATE staff_mfa SET backup_batch_id=NULL,backup_confirmed_batch_id=NULL WHERE user_id=?", id("shop_admin"));
+        assertEquals(403, call(fresh, "GET", "/admin/reports/low-stock", null).getResponse().getStatus(), "沒有批次的舊資料必須重新產生並保存");
+        jdbc.update("UPDATE staff_mfa SET backup_batch_id=?,backup_confirmed_batch_id=? WHERE user_id=?", eb.path("backupBatchId").asText(), eb.path("backupBatchId").asText(), id("shop_admin"));
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM staff_mfa_event WHERE user_id=? AND action='BACKUP_ACK' AND created_at>=NOW()-INTERVAL 1 MINUTE", Integer.class, id("shop_admin")) >= 1 ? 1 : 0);
         assertEquals(401, call(g, "POST", "/admin/login/mfa/enroll", Map.of("setupToken", token, "code", StaffLogin.totp(secret, step() + 1))).getResponse().getStatus(), "綁定 token 只能用一次");
 

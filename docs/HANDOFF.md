@@ -1,5 +1,13 @@
 # Figura（原 ELPSY Shop） 後端交接
 
+## 2026-11-25：MFA 備援碼下載與保存確認（V32–V33，併入 PR #18，未合併）
+
+- 綁定與重新產生的回應附帳號與產生時間；Web 在瀏覽器端產生 `Figura-MFA-Recovery-Codes.txt` 下載（不經伺服器、不放 URL、不存 storage），取消「複製全部」。
+- 具 `access.mfa.reset` 的員工（系統管理員／店長）必須下載並勾選確認：伺服器以 `staff_mfa.backup_ack_pending` 擋住業務 API（403 `MFA_BACKUP_ACK_REQUIRED`），直到 `POST /admin/mfa/backup-codes/ack`；其他員工可略過（`BACKUP_SKIP` 稽核）。重新產生需 TOTP（不接受備援碼）、舊碼立即失效，管理員需再次確認。
+- 伺服器只能確認「已觸發下載並勾選」，不能確認檔案確實保存；文件與介面依此表述。
+- Codex 審查找到 3 項並已修正（V33）：確認必須帶目前批次 ID（舊批次 409）；待確認依目前權限即時判斷，員工升權後必須保存；V33 之前沒有批次的舊資料視為未確認。
+- 測試：MFA 整合測試 6 項（管理員確認阻擋、員工略過、重新產生需 TOTP、舊碼失效、舊批次不能確認、升權後要求保存）；全套結果見 PR。`StaffLogin` 測試 helper 會替管理員完成確認。
+
 ## 2026-11-25：員工後台強制雙因素（V31，併入 PR #18，未合併）
 
 - **政策**：系統管理員、店長、所有員工都必須綁定 TOTP；顧客不受影響。密碼登入**一律不發 session**：已綁定 → challenge（TOTP 或一次性備援碼）；未綁定 → 綁定 token → `/admin/login/mfa/setup`、`/enroll` 完成後才發 session，並回傳 10 組只顯示一次的備援碼。
