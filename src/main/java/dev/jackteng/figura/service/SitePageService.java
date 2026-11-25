@@ -55,9 +55,13 @@ public class SitePageService {
     public List<PublicPage> publicList() { return db.queryForList("SELECT * FROM site_page ORDER BY kind DESC, slug").stream().map(SitePageService::pub).toList(); }
     @Transactional(readOnly = true)
     public PublicPage publicPage(String slug) { return pub(row(slug, false)); }
+    /** 未發布頁面的固定公開標題（不投影可編輯的草稿欄位）。 */
+    static final Map<String, String> PUBLIC_TITLES = Map.of("faq", "常見問題", "contact", "聯絡我們", "preorder-policy", "預購與訂金規則", "shipping-policy", "配送說明",
+            "cancellation-refund", "取消與退款", "returns-defects", "退換貨與瑕疵處理", "privacy", "隱私權政策", "terms", "服務條款");
     private static PublicPage pub(Map<String, Object> r) {
         boolean published = ((Number) r.get("published_revision")).intValue() > 0;
-        return new PublicPage((String) r.get("slug"), (String) r.get("kind"), published, published ? (String) r.get("published_title") : (String) r.get("draft_title"),
+        String slug = (String) r.get("slug");
+        return new PublicPage(slug, (String) r.get("kind"), published, published ? (String) r.get("published_title") : PUBLIC_TITLES.getOrDefault(slug, "條款審核中"),
                 published ? (String) r.get("published_body") : null, time(r.get("published_at")), ((Number) r.get("published_revision")).intValue());
     }
 

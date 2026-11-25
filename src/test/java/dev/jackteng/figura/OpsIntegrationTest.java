@@ -22,7 +22,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 @AutoConfigureMockMvc(print = MockMvcPrint.NONE) @ActiveProfiles("demo")
 @EnabledIfEnvironmentVariable(named = "SHOP_MYSQL_INTEGRATION", matches = "true")
 class OpsIntegrationTest extends ShopIntegrationSupport {
-    @AfterEach void dropMfa() { jdbc.update("DELETE FROM staff_mfa WHERE user_id=(SELECT id FROM user WHERE username='shop_admin')"); }
+    @AfterEach void dropMfa() {
+        Integer id = jdbc.queryForObject("SELECT id FROM user WHERE username='shop_admin'", Integer.class);
+        jdbc.update("DELETE FROM staff_mfa WHERE user_id=?", id); redis.delete("shop:mfa:fail:" + id);
+    }
 
     private static String totp(String base32, long step) throws Exception {
         String alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"; var out = new java.io.ByteArrayOutputStream(); int buffer = 0, bits = 0;
@@ -61,7 +64,18 @@ class OpsIntegrationTest extends ShopIntegrationSupport {
         assertEquals(401, call(g, "POST", "/admin/login/mfa", Map.of("challenge", challenge, "code", totp(secret, step + 1))).getResponse().getStatus(), "challenge 只能用一次");
         // 連錯 5 次 challenge 失效
         String c2 = data(login(guest())).path("mfaChallenge").asText();
-        for (int i = 0; i < 5; i++) assertEquals(401, call(g, "POST", "/admin/login/mfa", Map.of("challenge", c2, "code", "12345" + i)).getResponse().getStatus());
+        int before = jdbc.queryForObject("SELECT COUNT(*) FROM staff_mfa_event WHERE user_id=? AND action='LOGIN_FAIL'", Integer.class, Integer.parseInt(a.id()));
+        // 併發送出 8 次錯誤驗證碼：challenge 次數原子計算，最多 5 次被核對
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(4);
+        try {
+            var futures = new ArrayList<java.util.concurrent.Future<Integer>>();
+            for (int i = 0; i < 8; i++) { String wrong = "00000" + i; futures.add(pool.submit(() -> call(g, "POST", "/admin/login/mfa", Map.of("challenge", c2, "code", wrong)).getResponse().getStatus())); }
+            for (var f : futures) assertEquals(401, f.get());
+        } finally { pool.shutdown(); }
+        int after = jdbc.queryForObject("SELECT COUNT(*) FROM staff_mfa_event WHERE user_id=? AND action='LOGIN_FAIL'", Integer.class, Integer.parseInt(a.id()));
+        assertTrue(after - before <= 5 && after - before >= 1, "失敗稽核有保存且最多 5 次：" + (after - before));
+        long now2 = System.currentTimeMillis() / 1000 / 30;
+        assertEquals(401, call(g, "POST", "/admin/login/mfa", Map.of("challenge", c2, "code", totp(secret, now2 + 1))).getResponse().getStatus(), "用完次數的 challenge 不能再用");
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM staff_mfa_event WHERE user_id=? AND action='LOGIN_OK'", Integer.class, Integer.parseInt(a.id())) >= 1 ? 1 : 0);
         assertEquals(400, call(a, "POST", "/admin/mfa/disable", Map.of("code", "999999".equals(totp(secret, step)) ? "888888" : "999999")).getResponse().getStatus());
     }

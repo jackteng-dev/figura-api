@@ -257,6 +257,9 @@ public class WarehouseService {
         return n;
     }
     private boolean remindOne(String id, int daysBefore) {
+        var owner = db.queryForList("SELECT customer_id FROM shipment WHERE id=?", String.class, id);
+        if (owner.isEmpty()) return false;
+        db.queryForList("SELECT id FROM customer WHERE id=? FOR UPDATE", String.class, owner.get(0));   // 鎖序 customer → shipment
         var rows = db.queryForList("SELECT customer_id,storage_until FROM shipment WHERE id=? AND held_at IS NOT NULL AND merged_into IS NULL AND hold_reminded_at IS NULL AND storage_until<=CURRENT_TIMESTAMP(6)+INTERVAL ? DAY FOR UPDATE", id, daysBefore);
         if (rows.isEmpty()) return false;
         var item = db.queryForList("SELECT stock_order_id,preorder_order_id FROM shipment_item WHERE shipment_id=? ORDER BY position LIMIT 1", id);

@@ -30,6 +30,7 @@ class SupportIntegrationTest extends ShopIntegrationSupport {
 
     @Test void policyPagesNeedReviewByAnotherStaff() throws Exception {
         var pub = data(ok(guest(), "GET", "/site-pages/privacy", null, 200));
+        if (!pub.path("published").asBoolean()) assertEquals("隱私權政策", pub.path("title").asText(), "未發布不投影草稿標題");
         if (!pub.path("published").asBoolean()) assertTrue(pub.path("body").isNull(), "未發布不回草稿");
         var a = admin(); var s = staff();
         String body = "測試內容 " + uuid();

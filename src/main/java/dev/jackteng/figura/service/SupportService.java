@@ -94,6 +94,8 @@ public class SupportService {
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public Applied customerReply(String customer, String id, String request, String body) {
         String b = body.trim(); if (b.isEmpty()) throw fail(400, "內容不可空白");
+        // 鎖序 customer → ticket，與員工回覆一致，避免互等
+        if (db.queryForList("SELECT id FROM customer WHERE id=? FOR UPDATE", String.class, customer).isEmpty()) throw fail(401, "顧客登入狀態無效");
         var t = own(customer, id, true);
         var prior = db.queryForList("SELECT body,author_type FROM support_message WHERE ticket_id=? AND request_id=?", id, request);
         if (!prior.isEmpty()) { if (!b.equals(prior.get(0).get("body")) || !"CUSTOMER".equals(prior.get(0).get("author_type"))) throw fail(409, "操作編號已用於不同內容"); return new Applied(detail(id, false), true); }

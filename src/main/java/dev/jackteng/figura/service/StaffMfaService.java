@@ -32,8 +32,10 @@ public class StaffMfaService {
     private static final Duration CHALLENGE_TTL = Duration.ofMinutes(5);
     private final JdbcTemplate db; private final StringRedisTemplate redis; private final byte[] key; private final SecureRandom random = new SecureRandom();
 
-    public StaffMfaService(JdbcTemplate db, StringRedisTemplate redis, @Value("${MFA_ENCRYPTION_KEY:}") String secret) {
+    private final org.springframework.transaction.support.TransactionTemplate tx;
+    public StaffMfaService(JdbcTemplate db, StringRedisTemplate redis, @Value("${MFA_ENCRYPTION_KEY:}") String secret, org.springframework.transaction.PlatformTransactionManager tm) {
         this.db = db; this.redis = redis;
+        this.tx = new org.springframework.transaction.support.TransactionTemplate(tm);
         byte[] k = null;
         if (secret != null && secret.length() >= 32) {
             try { k = MessageDigest.getInstance("SHA-256").digest(secret.getBytes(StandardCharsets.UTF_8)); } catch (Exception e) { throw new IllegalStateException(e); }
@@ -57,14 +59,16 @@ public class StaffMfaService {
         return !rows.isEmpty() && truthy(rows.get(0).get("enabled"));
     }
 
-    /** 產生新的密鑰（尚未啟用）；已啟用者需先停用。 */
+    /** 產生新的密鑰（尚未啟用）；已啟用者需先停用。先鎖員工列再鎖 MFA 列，與 confirm／disable 同序，避免覆寫剛啟用的設定。 */
     @Transactional
     public Setup setup(int user, String username) {
         if (!available()) throw fail(404, "雙因素驗證尚未在此環境啟用");
-        if (enabled(user)) throw fail(409, "已啟用雙因素驗證，請先停用再重新設定");
+        var row = lock(user);
+        if (row != null && truthy(row.get("enabled"))) throw fail(409, "已啟用雙因素驗證，請先停用再重新設定");
         byte[] raw = new byte[20]; random.nextBytes(raw);
         String b32 = base32(raw);
-        db.update("INSERT INTO staff_mfa(user_id,secret_enc,enabled) VALUES(?,?,FALSE) ON DUPLICATE KEY UPDATE secret_enc=VALUES(secret_enc),enabled=FALSE,confirmed_at=NULL,last_step=0", user, encrypt(raw));
+        if (row == null) db.update("INSERT INTO staff_mfa(user_id,secret_enc,enabled) VALUES(?,?,FALSE)", user, encrypt(raw));
+        else if (db.update("UPDATE staff_mfa SET secret_enc=?,confirmed_at=NULL,last_step=0 WHERE user_id=? AND enabled=FALSE", encrypt(raw), user) != 1) throw fail(409, "雙因素狀態已變更，請重新整理");
         event(user, "SETUP");
         String label = URLEncoder.encode(ISSUER + ":" + username, StandardCharsets.UTF_8).replace("+", "%20");
         return new Setup(b32, "otpauth://totp/" + label + "?secret=" + b32 + "&issuer=" + ISSUER + "&algorithm=SHA1&digits=6&period=30");
@@ -90,33 +94,47 @@ public class StaffMfaService {
     }
 
     // ---- 登入 challenge ----
+    // Redis hash：user、device、remember、tries；期限在建立時設定一次，之後不延長。
+    private static final org.springframework.data.redis.core.script.DefaultRedisScript<java.util.List> RESERVE = new org.springframework.data.redis.core.script.DefaultRedisScript<>(
+            "if redis.call('EXISTS',KEYS[1])==0 then return nil end; local t=redis.call('HINCRBY',KEYS[1],'tries',1); "
+            + "if t>5 then redis.call('DEL',KEYS[1]); return nil end; return redis.call('HMGET',KEYS[1],'user','device','remember')", java.util.List.class);
+    private static final int MAX_ACCOUNT_FAILURES = 10;
     public String challenge(int user, String device, boolean remember) {
-        String id = UUID.randomUUID().toString();
-        redis.opsForValue().set("shop:mfa:challenge:" + id, user + "|" + device + "|" + remember + "|0", CHALLENGE_TTL);
+        String id = UUID.randomUUID().toString(), k = "shop:mfa:challenge:" + id;
+        redis.opsForHash().putAll(k, Map.of("user", String.valueOf(user), "device", device, "remember", String.valueOf(remember), "tries", "0"));
+        redis.expire(k, CHALLENGE_TTL);
         return id;
     }
     public record Pending(int user, String username, String device, boolean remember) {}
-    /** 驗證 challenge＋驗證碼；成功後 challenge 立即失效。 */
-    @Transactional
+    /**
+     * 驗證 challenge＋驗證碼。每次嘗試先在 Redis 原子扣一次（最多 5 次、期限不延長）；成功時以 DEL 原子消耗，
+     * 併發請求只有一個能成功。帳號層級 15 分鐘內錯誤超過 10 次暫停驗證。失敗稽核以獨立交易保存。
+     */
+    // 不放在單一交易：鎖定與核對驗證碼在短交易內完成並提交，之後才寫失敗稽核（避免稽核等待自己持有的員工列鎖）。
     public Pending verify(String challenge, String code) {
         if (challenge == null || !challenge.matches("[0-9a-f-]{36}")) throw fail(401, "驗證已過期，請重新登入");
-        String k = "shop:mfa:challenge:" + challenge, v = redis.opsForValue().get(k);
-        if (v == null) throw fail(401, "驗證已過期，請重新登入");
-        String[] p = v.split("\\|");
-        int user = Integer.parseInt(p[0]), tries = Integer.parseInt(p[3]);
-        var row = lock(user);
-        if (row == null || !truthy(row.get("enabled")) || !check(user, row, code)) {
-            event(user, "LOGIN_FAIL");
-            if (tries + 1 >= 5) redis.delete(k);
-            else redis.opsForValue().set(k, p[0] + "|" + p[1] + "|" + p[2] + "|" + (tries + 1), CHALLENGE_TTL);
+        String k = "shop:mfa:challenge:" + challenge;
+        @SuppressWarnings("unchecked") List<Object> p = redis.execute(RESERVE, List.of(k));
+        if (p == null || p.isEmpty() || p.get(0) == null) throw fail(401, "驗證已過期，請重新登入");
+        int user = Integer.parseInt(String.valueOf(p.get(0)));
+        String failures = "shop:mfa:fail:" + user, count = redis.opsForValue().get(failures);
+        if (count != null && Integer.parseInt(count) >= MAX_ACCOUNT_FAILURES) { redis.delete(k); throw fail(429, "驗證錯誤次數過多，請 15 分鐘後再登入"); }
+        Boolean ok = tx.execute(st -> { var row = lock(user); return row != null && truthy(row.get("enabled")) && check(user, row, code); });
+        if (!Boolean.TRUE.equals(ok)) {
+            Long n = redis.opsForValue().increment(failures);
+            if (n != null && n == 1) redis.expire(failures, Duration.ofMinutes(15));
+            tx.executeWithoutResult(st -> event(user, "LOGIN_FAIL"));
             throw fail(401, "驗證碼不正確");
         }
-        redis.delete(k);
-        event(user, "LOGIN_OK");
-        return new Pending(user, db.queryForObject("SELECT username FROM user WHERE id=?", String.class, user), p[1], Boolean.parseBoolean(p[2]));
+        if (!Boolean.TRUE.equals(redis.delete(k))) throw fail(401, "驗證已過期，請重新登入");   // 被另一個併發請求消耗
+        redis.delete(failures);
+        tx.executeWithoutResult(st -> event(user, "LOGIN_OK"));
+        return new Pending(user, db.queryForObject("SELECT username FROM user WHERE id=?", String.class, user), String.valueOf(p.get(1)), Boolean.parseBoolean(String.valueOf(p.get(2))));
     }
 
+    /** 鎖序：員工列 → MFA 列（setup／confirm／disable／verify 一致）。 */
     private Map<String, Object> lock(int user) {
+        db.queryForList("SELECT id FROM user WHERE id=? FOR UPDATE", Integer.class, user);
         var rows = db.queryForList("SELECT * FROM staff_mfa WHERE user_id=? FOR UPDATE", user);
         return rows.isEmpty() ? null : rows.get(0);
     }
