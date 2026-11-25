@@ -76,6 +76,15 @@ class OpsIntegrationTest extends ShopIntegrationSupport {
         assertTrue(after - before <= 5 && after - before >= 1, "失敗稽核有保存且最多 5 次：" + (after - before));
         long now2 = System.currentTimeMillis() / 1000 / 30;
         assertEquals(401, call(g, "POST", "/admin/login/mfa", Map.of("challenge", c2, "code", totp(secret, now2 + 1))).getResponse().getStatus(), "用完次數的 challenge 不能再用");
+        // 帳號層級上限：換新的 challenge 繼續猜，總嘗試超過 10 次後一律 429，正確驗證碼也不行
+        boolean capped = false;
+        for (int i = 0; i < 4 && !capped; i++) {
+            String c = data(login(guest())).path("mfaChallenge").asText();
+            for (int j = 0; j < 5 && !capped; j++) capped = call(g, "POST", "/admin/login/mfa", Map.of("challenge", c, "code", "99999" + j)).getResponse().getStatus() == 429;
+        }
+        assertTrue(capped, "帳號層級節流");
+        String c3 = data(login(guest())).path("mfaChallenge").asText();
+        assertEquals(429, call(g, "POST", "/admin/login/mfa", Map.of("challenge", c3, "code", totp(secret, System.currentTimeMillis() / 1000 / 30 + 1))).getResponse().getStatus());
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM staff_mfa_event WHERE user_id=? AND action='LOGIN_OK'", Integer.class, Integer.parseInt(a.id())) >= 1 ? 1 : 0);
         assertEquals(400, call(a, "POST", "/admin/mfa/disable", Map.of("code", "999999".equals(totp(secret, step)) ? "888888" : "999999")).getResponse().getStatus());
     }

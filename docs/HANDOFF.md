@@ -1,16 +1,20 @@
 # Figura（原 ELPSY Shop） 後端交接
 
-## 2026-11-25：Commerce V2 Phase 1–3（規格、後端搜尋、收藏與通知；V25–V27，未合併）
+## 2026-11-25：Commerce V2 Phase 1–7（V25–V30，未合併，需受控切換）
 
-分支 `feat/commerce-v2-specs`（Web／App 同名）。計畫與狀態：`docs/COMMERCE_V2_PLAN.md`；契約：`docs/CATALOG_SEARCH_API.md`、`docs/ENGAGEMENT_API.md`。**V25–V27 位於受保護路徑，需作者受控切換；不 merge、不部署、未碰正式 DB。** V1–V24 bytes 不變。
+分支 `feat/commerce-v2-specs`（Web／App 同名）。計畫、完成狀態與待啟用清單：`docs/COMMERCE_V2_PLAN.md` §6–7。契約：`CATALOG_SEARCH_API`、`ENGAGEMENT_API`、`WAREHOUSE_API`、`SUPPORT_API`、`OPS_SECURITY`，Web `docs/SEO_DEPLOYMENT.md`。**V25–V30 位於受保護路徑，需作者受控切換；不 merge、不部署、未碰正式 DB。** V1–V24 bytes 不變。
 
-- **P1 規格（V25）**：catalog_product 新增角色、製造商、比例、全高、尺寸、材質、類型、版本、限定、配件、發售日／月、規格說明、`content_origin`、概念材質、`search_text`；白名單 CHECK。資料寫入只有：描述開頭為「AI 生成概念圖｜展示商品」者標 `AI_CONCEPT`、回填 search_text。**既有 99 款未填任何規格（NULL＝未提供）**；AI 概念材質公開時不放在 materials。
-- **P2 搜尋（V26）**：`GET /catalog/products` 支援 q（ngram FULLTEXT，1 字用 LIKE）、品牌／作品／分類／製造商／可售狀態／價格／比例／材質／類型／版本／限定與排序白名單（含相容舊網址的 STOCK_FIRST）；`GET /catalog/facets`（可售狀態本身不套用自己的篩選）。可下單批次規則（開放、未截止、有配額、款式啟用）由搜尋、商品摘要與提醒掃描共用。品牌／作品改名同交易重建 search_text。
-- **P3（V27）**：收藏（含訪客合併）、商品提醒（補貨／開放預購／截止前 48h／發售）、通知偏好、站內通知匣。提醒由 `ProductAlertScanner` 只在狀態轉換時寫 outbox（product parent），首次觀察只建基準，`(event_kind,source_id)` 防重；排程 `shop.product-alerts.scanner-enabled` 預設 false。Email 只有 `EmailSender` 介面＋`MockEmailSender`（MOCK_EMAIL_ENABLED，寫 customer_mock_email purpose=NOTIFY）；正式寄信待金鑰。
-- **測試**：新增 ProductSpecs 4、CatalogSearch 2、Engagement 3 項。全套 333 項：失敗只剩本機環境既有項（Notification／PreorderOrder 通知測試需 `MOCK_NOTIFICATIONS_ENABLED=true`，加上後 12＋18 全過；StaffAccess 2 項因本機 DB 角色數 54＞50）。測試 DB 先前失敗殘留的 34 筆 1990 年 outbox 合成資料已延後，才讓 worker 測試通過。
-- **Codex 唯讀 review（P1–2）**：6 項 P2／P3（停用款式批次、額滿批次遮蔽、facets 快取、改名不同步、發售日切換、舊排序）已全部修正。
-- 本機 demo DB 已到 V27，API 以新 jar 執行於 19092。
-- 下一步：P4 SEO／GEO（`/api/seo/*`＋nginx SSI，部署契約變更）、P5 合併與倉庫（V28）、P6 客服政策（V29）、P7 後台營運（V30）。
+- **P1 規格（V25）／P2 搜尋（V26）**：規格欄位與白名單；既有 99 款不填規格；AI 概念材質公開不出現在 materials。ngram 搜尋、facets、排序白名單（含 STOCK_FIRST）；可下單批次規則（開放、未截止、有配額、款式啟用）由搜尋、商品摘要、提醒掃描共用；主檔改名同交易重建 search_text。
+- **P3（V27）**：收藏（含訪客合併）、商品提醒（`ProductAlertScanner` 狀態轉換才通知、首次只建基準、source_id 防重）、通知偏好、站內通知匣（outbox 增 product parent 與 read_at）；`EmailSender`＋`MockEmailSender`。
+- **P4 SEO**：`/api/seo/head|body|meta|sitemap.xml|robots.txt|guides`、`GuideCatalog`（只寫系統實際規則與一般知識）；無評價、offers 預設關閉、AI 概念商品不輸出 Product；已發布政策頁才索引。
+- **P5（V28）**：出貨單合併（只搬 shipment_item，運費只減不增，差額 `shipping_adjustment` 待審）、私人倉庫暫存（暫存中不可出貨，單筆端點也擋）、到期提醒、員工解除／延長、運費調整審核（CREDIT_MOCK 只改狀態）。
+- **P6（V29）**：政策頁草稿→送審→**發布者不可是最後編輯者**；8 個空白草稿，未發布公開端點不回草稿（標題用固定名稱）。客服單（內部備註不外露、關聯訂單須本人）、測試物流追蹤與到店／異常通知、`CarrierAdapter` 接入點。
+- **P7（V30）**：員工 TOTP（自願、AES-GCM 加密、challenge 原子扣次數與一次性消耗、帳號層級節流、失敗稽核）、銷售報表（模擬／綠界測試／真實分開，真實營收 0）、低庫存、營運狀態、未處理例外錯誤代碼與 ERROR 日誌（原本 500 不記錄）。
+- **測試**：新增 ProductSpecs 4、CatalogSearch 2、Engagement 3、Seo 2、Warehouse 2、Support 3、Ops 2。全套 **342 項：0 failures、2 errors（`StaffAccessIntegrationTest`，本機 DB 角色數既有問題）**。本機測試環境需 `MOCK_NOTIFICATIONS_ENABLED=true` 與 Hikari 上限（`SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=4`、`MINIMUM_IDLE=0`，已寫入忽略的 `work/test-env.sh`），否則通知測試 404、多個 context 會 Too many connections。測試 DB 先前失敗殘留的 34 筆 1990 年 outbox 合成資料已延後到 2099，才讓 worker 測試通過。
+- **Codex 唯讀審查**：P1–2 六項、P3–7 六項（MFA 併發繞過 P1、MFA setup 競態、提醒與客服回覆死鎖、草稿標題外洩、失敗稽核回滾）全部修正並加測試；覆審再指出帳號層級節流可被併發繞過，已改為 Redis 原子先保留額度再核對並加測試。
+- **本機 demo**：DB 已到 V30，API 以新 jar 執行於 19092；經 Web 代理驗證收藏／提醒／通知、報表（真實營收 0）、低庫存、營運狀態、政策頁未發布、員工登入（未啟用 MFA）不變。本機未設 `MFA_ENCRYPTION_KEY`，MFA 顯示不可用屬預期。
+- **未完成／限制**：正式金流、Email、物流 API、Search Console、nginx SSI（部署契約）、政策內容、倉庫與運費政策、備份排程皆列待啟用；新後台頁未以員工帳號在瀏覽器實際點過；App 未做真機；`StaffAccessIntegrationTest` 2 項為本機 DB 角色數既有問題。
+- **下一步**：作者審核 PR → 隔離環境演練 V25–V30 → 受控切換 → 合併 API，再合併 Web／App；審核 gateway SSI。
 
 ## 2026-11-19：商品多圖與 V24（未合併／受控切換前不可 merge）
 

@@ -99,6 +99,8 @@ public class StaffMfaService {
             "if redis.call('EXISTS',KEYS[1])==0 then return nil end; local t=redis.call('HINCRBY',KEYS[1],'tries',1); "
             + "if t>5 then redis.call('DEL',KEYS[1]); return nil end; return redis.call('HMGET',KEYS[1],'user','device','remember')", java.util.List.class);
     private static final int MAX_ACCOUNT_FAILURES = 10;
+    private static final org.springframework.data.redis.core.script.DefaultRedisScript<Long> ACCOUNT = new org.springframework.data.redis.core.script.DefaultRedisScript<>(
+            "local n=redis.call('INCR',KEYS[1]); if n==1 then redis.call('EXPIRE',KEYS[1],ARGV[1]) end; return n", Long.class);
     public String challenge(int user, String device, boolean remember) {
         String id = UUID.randomUUID().toString(), k = "shop:mfa:challenge:" + id;
         redis.opsForHash().putAll(k, Map.of("user", String.valueOf(user), "device", device, "remember", String.valueOf(remember), "tries", "0"));
@@ -117,12 +119,12 @@ public class StaffMfaService {
         @SuppressWarnings("unchecked") List<Object> p = redis.execute(RESERVE, List.of(k));
         if (p == null || p.isEmpty() || p.get(0) == null) throw fail(401, "驗證已過期，請重新登入");
         int user = Integer.parseInt(String.valueOf(p.get(0)));
-        String failures = "shop:mfa:fail:" + user, count = redis.opsForValue().get(failures);
-        if (count != null && Integer.parseInt(count) >= MAX_ACCOUNT_FAILURES) { redis.delete(k); throw fail(429, "驗證錯誤次數過多，請 15 分鐘後再登入"); }
+        // 帳號層級額度：核對驗證碼「之前」原子保留一次嘗試（INCR＋首次設定 TTL），併發請求也不會超過上限；成功才清除。
+        String failures = "shop:mfa:fail:" + user;
+        Long used = redis.execute(ACCOUNT, List.of(failures), String.valueOf(Duration.ofMinutes(15).toSeconds()));
+        if (used == null || used > MAX_ACCOUNT_FAILURES) { redis.delete(k); throw fail(429, "驗證錯誤次數過多，請 15 分鐘後再登入"); }
         Boolean ok = tx.execute(st -> { var row = lock(user); return row != null && truthy(row.get("enabled")) && check(user, row, code); });
         if (!Boolean.TRUE.equals(ok)) {
-            Long n = redis.opsForValue().increment(failures);
-            if (n != null && n == 1) redis.expire(failures, Duration.ofMinutes(15));
             tx.executeWithoutResult(st -> event(user, "LOGIN_FAIL"));
             throw fail(401, "驗證碼不正確");
         }
