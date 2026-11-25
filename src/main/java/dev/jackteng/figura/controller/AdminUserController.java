@@ -96,7 +96,10 @@ public class AdminUserController {
     @PostMapping("/login/mfa/enroll") public Result<User> loginMfaEnroll(@RequestBody @jakarta.validation.Valid MfaEnroll in, HttpServletResponse response) { return Result.success(sessions.completeEnrollment(in.setupToken(), in.code(), response)); }
     public record MfaCode(@jakarta.validation.constraints.NotBlank String code) {}
     @GetMapping("/mfa") public Result<dev.jackteng.figura.service.StaffMfaService.Status> mfaStatus(@AuthenticationPrincipal CustomUserDetails me) { return Result.success(mfa.status(me.getId())); }
-    @PostMapping("/mfa/backup-codes") public Result<java.util.List<String>> mfaBackupCodes(@AuthenticationPrincipal CustomUserDetails me, @RequestBody @jakarta.validation.Valid MfaCode in) { return Result.success(mfa.regenerateBackupCodes(me.getId(), in.code())); }
+    @PostMapping("/mfa/backup-codes") public Result<dev.jackteng.figura.service.StaffMfaService.BackupCodes> mfaBackupCodes(@AuthenticationPrincipal CustomUserDetails me, @RequestBody @jakarta.validation.Valid MfaCode in) { return Result.success(mfa.regenerateBackupCodes(me.getId(), in.code())); }
+    /** 備援碼保存確認：downloaded＝頁面已觸發下載、confirmed＝使用者勾選已妥善保存（伺服器無法驗證檔案確實保存）。 */
+    public record BackupAck(@jakarta.validation.constraints.NotNull Boolean downloaded, @jakarta.validation.constraints.NotNull Boolean confirmed) {}
+    @PostMapping("/mfa/backup-codes/ack") public Result<dev.jackteng.figura.service.StaffMfaService.Status> mfaBackupAck(@AuthenticationPrincipal CustomUserDetails me, @RequestBody @jakarta.validation.Valid BackupAck in) { return Result.success(mfa.acknowledge(me.getId(), in.downloaded(), in.confirmed())); }
     public record MfaReset(@jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Pattern(regexp = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}") String requestId,
                            @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max = 500) String note) {}
     public record MfaResetResult(int staffId, boolean replayed) {}

@@ -37,4 +37,9 @@ public class User {
     @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) private String mfaSetupToken;
     /** 只在完成綁定的那一次回傳的一次性備援碼。 */
     @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) private java.util.List<String> backupCodes;
+    /** 此員工是否必須保存備援碼（具 access.mfa.reset）；與 backupCodes 同次回傳。 */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) private Boolean backupCodesRequired;
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) private java.time.OffsetDateTime backupCodesGeneratedAt;
+    /** 尚未完成備援碼保存確認：業務 API 會回 403（MFA_BACKUP_ACK_REQUIRED）。 */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) private Boolean mfaBackupAckPending;
 }

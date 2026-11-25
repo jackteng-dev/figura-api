@@ -73,15 +73,52 @@ public class StaffMfaService {
     /** 強制 MFA：金鑰未設定時不得登入後台。 */
     public void requireAvailable() { if (!available()) throw fail(503, "後台雙因素驗證尚未設定，暫停員工登入，請聯絡系統管理者"); }
 
-    public record Status(boolean available, boolean enabled, int backupCodesRemaining) {}
+    /** backupAckPending：需完成備援碼保存確認才能使用業務 API；backupCodesRequired：此員工必須保存備援碼（具 access.mfa.reset）。 */
+    public record Status(boolean available, boolean enabled, int backupCodesRemaining, boolean backupAckPending, boolean backupCodesRequired) {}
+    /** 新產生的備援碼：只在這次回應出現一次；伺服器只保存雜湊。 */
+    public record BackupCodes(List<String> codes, String username, java.time.OffsetDateTime generatedAt, boolean required) {}
     public record Setup(String secret, String otpauthUri) {}
     /** authVersion：簽發 token 當下的 user.auth_version；重設會遞增，舊流程因此失效。 */
     public record Pending(int user, String username, String device, boolean remember, int authVersion) {}
-    public record Enrolled(Pending pending, List<String> backupCodes) {}
+    public record Enrolled(Pending pending, BackupCodes backup) {}
 
     @Transactional(readOnly = true)
     public Status status(int user) {
-        return new Status(available(), enabled(user), db.queryForObject("SELECT COUNT(*) FROM staff_mfa_backup_code WHERE user_id=? AND used_at IS NULL", Integer.class, user));
+        return new Status(available(), enabled(user), db.queryForObject("SELECT COUNT(*) FROM staff_mfa_backup_code WHERE user_id=? AND used_at IS NULL", Integer.class, user),
+                ackPending(user), backupRequired(user));
+    }
+    /** 必須保存備援碼的員工：具 access.mfa.reset（系統管理員／店長）。依權限判斷，不寫死帳號。 */
+    public boolean backupRequired(int user) {
+        Integer n = db.queryForObject("SELECT COUNT(*) FROM user_role ur JOIN role r ON r.id=ur.role_id AND r.enabled=TRUE JOIN role_permission rp ON rp.role_id=r.id"
+                + " JOIN permissions_backend p ON p.id=rp.permission_id WHERE ur.user_id=? AND p.code='access.mfa.reset'", Integer.class, user);
+        return n != null && n > 0;
+    }
+    public boolean ackPending(int user) {
+        var rows = db.queryForList("SELECT backup_ack_pending FROM staff_mfa WHERE user_id=? AND enabled=TRUE", user);
+        return !rows.isEmpty() && truthy(rows.get(0).get("backup_ack_pending"));
+    }
+    /** 產生備援碼並視權限設定「待確認保存」（呼叫端已持有員工列與 MFA 列鎖）。 */
+    private BackupCodes issueBackupCodes(int user) {
+        var codes = newBackupCodes(user);
+        boolean required = backupRequired(user);
+        db.update("UPDATE staff_mfa SET backup_ack_pending=? WHERE user_id=?", required, user);
+        var at = db.queryForObject("SELECT CURRENT_TIMESTAMP(6)", java.time.LocalDateTime.class);
+        return new BackupCodes(codes, db.queryForObject("SELECT username FROM user WHERE id=?", String.class, user), at.atOffset(java.time.ZoneOffset.ofHours(8)), required);
+    }
+    /**
+     * 備援碼保存確認。伺服器無法驗證檔案是否確實保存：只記錄使用者在頁面上「已觸發下載並勾選確認」或「略過」。
+     * 必須保存者（待確認中）只能以 downloaded=true 且 confirmed=true 解除；其他員工可略過（只寫稽核）。
+     */
+    @Transactional
+    public Status acknowledge(int user, boolean downloaded, boolean confirmed) {
+        var row = lock(user, null);
+        if (row == null || !truthy(row.get("enabled"))) throw fail(409, "尚未完成雙因素綁定");
+        boolean pending = truthy(row.get("backup_ack_pending"));
+        if (pending && !(downloaded && confirmed)) throw fail(400, "請先下載備援碼並勾選已妥善保存");
+        if (pending) db.update("UPDATE staff_mfa SET backup_ack_pending=FALSE WHERE user_id=?", user);
+        event(user, downloaded ? "BACKUP_ACK" : "BACKUP_SKIP", null,
+                downloaded ? "頁面已觸發下載" + (confirmed ? "並勾選保存確認" : "") + "（無法驗證檔案是否確實保存）" : "使用者選擇略過下載");
+        return status(user);
     }
     public boolean enabled(int user) {
         var rows = db.queryForList("SELECT enabled FROM staff_mfa WHERE user_id=?", user);
@@ -136,11 +173,11 @@ public class StaffMfaService {
         if (p == null || p.isEmpty() || p.get(0) == null) throw fail(401, "驗證已過期，請重新登入");
         int user = Integer.parseInt(String.valueOf(p.get(0))), auth = authOf(p);
         reserveAccount(user, k);
-        List<String> codes = tx.execute(st -> {
+        BackupCodes codes = tx.execute(st -> {
             var row = lock(user, auth);
             if (row == null || truthy(row.get("enabled")) || !totp(user, row, code)) return null;
             db.update("UPDATE staff_mfa SET enabled=TRUE,confirmed_at=CURRENT_TIMESTAMP(6) WHERE user_id=?", user);
-            var out = newBackupCodes(user);
+            var out = issueBackupCodes(user);
             event(user, "ENROLL", null, null);
             return out;
         });
@@ -179,14 +216,14 @@ public class StaffMfaService {
     }
 
     // ---- 已登入員工：重新產生備援碼（需目前的 TOTP） ----
-    public List<String> regenerateBackupCodes(int user, String code) {
+    public BackupCodes regenerateBackupCodes(int user, String code) {
         requireAvailable();
         reserveAccount(user, null);   // 與登入共用帳號層級額度，避免以 session 無限猜碼
-        List<String> out = tx.execute(st -> {
+        BackupCodes out = tx.execute(st -> {
             var row = lock(user, null);
             if (row == null || !truthy(row.get("enabled"))) throw fail(409, "尚未完成雙因素綁定");
-            if (!totp(user, row, code)) return null;
-            var codes = newBackupCodes(user);
+            if (!totp(user, row, code)) return null;   // 重新產生必須重新驗證 TOTP（不接受備援碼）
+            var codes = issueBackupCodes(user);   // 舊備援碼在同一交易刪除，立即失效
             event(user, "BACKUP_REGEN", null, null);
             return codes;
         });

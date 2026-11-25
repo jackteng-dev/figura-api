@@ -61,8 +61,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 || Set.of("/api/admin/register","/api/admin/stopAccount","/api/admin/user/update").contains(path)) {
             error(response,410,"舊存取管理寫入已停用，請使用新版管理 API"); return;
         }
+        // 備援碼保存確認未完成（系統管理員／店長）：只允許查看自身狀態、重新產生與確認，其餘業務 API 一律拒絕
+        if (Boolean.TRUE.equals(user.getMfaBackupAckPending()) && !(("/api/auth/me".equals(path) && "GET".equals(request.getMethod()))
+                || ("/api/admin/mfa".equals(path) && "GET".equals(request.getMethod()))
+                || (("/api/admin/mfa/backup-codes".equals(path) || "/api/admin/mfa/backup-codes/ack".equals(path)) && "POST".equals(request.getMethod())))) {
+            response.setStatus(403); response.setContentType("application/json"); response.setCharacterEncoding("UTF-8");
+            response.getWriter().write("{\"code\":1,\"errorCode\":\"MFA_BACKUP_ACK_REQUIRED\",\"message\":\"請先下載並確認保存雙因素備援碼\",\"data\":null}");
+            return;
+        }
         // 雙因素自助設定：任何已登入員工都可管理自己的 MFA，不需額外權限
-        boolean self = path.equals("/api/admin/mfa") || matcher.match("/api/admin/mfa/*", path);
+        boolean self = path.equals("/api/admin/mfa") || matcher.match("/api/admin/mfa/*", path) || path.equals("/api/admin/mfa/backup-codes/ack");
         boolean authorized = self || ("/api/auth/me".equals(path) && "GET".equals(request.getMethod())) || user.getPermissions().stream().anyMatch(p ->
                 p.getUrl() != null && p.getMethod() != null && matcher.match(p.getUrl(), path) && p.getMethod().equalsIgnoreCase(request.getMethod()));
         if (!authorized) { error(response, 403, "無使用權限"); return; }

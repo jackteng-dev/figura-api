@@ -59,6 +59,19 @@ class OpsIntegrationTest extends ShopIntegrationSupport {
         var codes = new ArrayList<String>(); data(enrolled).path("backupCodes").forEach(c -> codes.add(c.asText()));
         assertEquals(10, codes.size()); assertTrue(codes.get(0).matches("[A-Z2-9]{5}-[A-Z2-9]{5}"));
         assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM staff_mfa_backup_code WHERE code_hash=?", Integer.class, codes.get(0).replace("-", "")), "備援碼只存雜湊");
+        // 系統管理員：必須下載並確認保存，才能使用業務 API
+        var eb = data(enrolled);
+        assertTrue(eb.path("backupCodesRequired").asBoolean()); assertTrue(eb.path("mfaBackupAckPending").asBoolean());
+        assertEquals("shop_admin", eb.path("username").asText()); assertFalse(eb.path("backupCodesGeneratedAt").isMissingNode());
+        var fresh = new Client(g.csrf(), List.of(g.cookies().get(0), cookie(enrolled, "accessToken"), cookie(enrolled, "refreshToken")), String.valueOf(id("shop_admin")));
+        var blocked = call(fresh, "GET", "/admin/reports/low-stock", null);
+        assertEquals(403, blocked.getResponse().getStatus()); assertTrue(text(blocked).contains("MFA_BACKUP_ACK_REQUIRED"));
+        assertTrue(data(ok(fresh, "GET", "/auth/me", null, 200)).path("mfaBackupAckPending").asBoolean(), "前端據此導向保存確認");
+        assertEquals(400, call(fresh, "POST", "/admin/mfa/backup-codes/ack", Map.of("downloaded", false, "confirmed", false)).getResponse().getStatus(), "管理員不能略過");
+        assertEquals(400, call(fresh, "POST", "/admin/mfa/backup-codes/ack", Map.of("downloaded", true, "confirmed", false)).getResponse().getStatus(), "需勾選保存確認");
+        assertFalse(data(ok(fresh, "POST", "/admin/mfa/backup-codes/ack", Map.of("downloaded", true, "confirmed", true), 200)).path("backupAckPending").asBoolean());
+        assertEquals(200, call(fresh, "GET", "/admin/reports/low-stock", null).getResponse().getStatus(), "確認後可使用業務 API");
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM staff_mfa_event WHERE user_id=? AND action='BACKUP_ACK' AND created_at>=NOW()-INTERVAL 1 MINUTE", Integer.class, id("shop_admin")) >= 1 ? 1 : 0);
         assertEquals(401, call(g, "POST", "/admin/login/mfa/enroll", Map.of("setupToken", token, "code", StaffLogin.totp(secret, step() + 1))).getResponse().getStatus(), "綁定 token 只能用一次");
 
         // 已綁定：每個新 session 都要 TOTP；密碼正確只拿到 challenge
@@ -79,6 +92,7 @@ class OpsIntegrationTest extends ShopIntegrationSupport {
         var me = new Client(g.csrf(), List.of(g.cookies().get(0), cookie(ok2, "accessToken"), cookie(ok2, "refreshToken")), String.valueOf(id("shop_admin")));
         assertEquals(9, data(ok(me, "GET", "/admin/mfa", null, 200)).path("backupCodesRemaining").asInt());
         assertEquals(400, call(me, "POST", "/admin/mfa/backup-codes", Map.of("code", "12345")).getResponse().getStatus(), "重新產生需要正確 TOTP");
+        assertEquals(400, call(me, "POST", "/admin/mfa/backup-codes", Map.of("code", codes.get(1))).getResponse().getStatus(), "重新產生不接受備援碼，必須重新驗證 TOTP");
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM staff_mfa_event WHERE user_id=? AND action='BACKUP_USED'", Integer.class, id("shop_admin")) >= 1 ? 1 : 0);
         assertEquals(404, call(me, "POST", "/admin/mfa/disable", Map.of("code", "123456")).getResponse().getStatus(), "強制 MFA 沒有自行停用");
 
@@ -101,6 +115,29 @@ class OpsIntegrationTest extends ShopIntegrationSupport {
         assertTrue(capped, "帳號層級節流");
         String c6 = data(password(guest(), "shop_admin", pw)).path("mfaChallenge").asText();
         assertEquals(429, call(g, "POST", "/admin/login/mfa", Map.of("challenge", c6, "code", StaffLogin.totp(secret, step() + 1))).getResponse().getStatus());
+    }
+
+    @Test void regeneratingBackupCodesNeedsTotpInvalidatesOldCodesAndAdminMustReconfirm() throws Exception {
+        clearMfa("shop_admin");
+        var g = guest(); String pw = System.getenv("DEMO_ADMIN_PASSWORD");
+        String token = data(password(g, "shop_admin", pw)).path("mfaSetupToken").asText();
+        String secret = data(ok(g, "POST", "/admin/login/mfa/setup", Map.of("setupToken", token), 200)).path("secret").asText();
+        var enrolled = call(g, "POST", "/admin/login/mfa/enroll", Map.of("setupToken", token, "code", StaffLogin.totp(secret, step())));
+        assertEquals(200, enrolled.getResponse().getStatus(), text(enrolled));
+        var old = new ArrayList<String>(); data(enrolled).path("backupCodes").forEach(c -> old.add(c.asText()));
+        var me = new Client(g.csrf(), List.of(g.cookies().get(0), cookie(enrolled, "accessToken"), cookie(enrolled, "refreshToken")), String.valueOf(id("shop_admin")));
+        ok(me, "POST", "/admin/mfa/backup-codes/ack", Map.of("downloaded", true, "confirmed", true), 200);
+        assertEquals(400, call(me, "POST", "/admin/mfa/backup-codes", Map.of("code", old.get(0))).getResponse().getStatus(), "重新產生不接受備援碼，必須重新驗證 TOTP");
+        var regen = data(ok(me, "POST", "/admin/mfa/backup-codes", Map.of("code", StaffLogin.totp(secret, step() + 1)), 200));
+        assertEquals(10, regen.path("codes").size()); assertTrue(regen.path("required").asBoolean()); assertEquals("shop_admin", regen.path("username").asText());
+        assertFalse(regen.path("generatedAt").isMissingNode());
+        assertEquals(403, call(me, "GET", "/admin/reports/low-stock", null).getResponse().getStatus(), "重新產生後管理員需再次確認保存");
+        ok(me, "POST", "/admin/mfa/backup-codes/ack", Map.of("downloaded", true, "confirmed", true), 200);
+        assertEquals(200, call(me, "GET", "/admin/reports/low-stock", null).getResponse().getStatus());
+        String c = data(password(guest(), "shop_admin", pw)).path("mfaChallenge").asText();
+        assertEquals(401, call(g, "POST", "/admin/login/mfa", Map.of("challenge", c, "code", old.get(1))).getResponse().getStatus(), "舊備援碼立即失效");
+        assertEquals(200, call(g, "POST", "/admin/login/mfa", Map.of("challenge", c, "code", regen.path("codes").get(0).asText())).getResponse().getStatus(), "新備援碼可用");
+        assertEquals(10, jdbc.queryForObject("SELECT COUNT(*) FROM staff_mfa_backup_code WHERE user_id=?", Integer.class, id("shop_admin")), "只保留新的一組雜湊");
     }
 
     @Test void sessionsWithoutMfaClaimAreRejectedAndCustomersUnaffected() throws Exception {
@@ -149,8 +186,12 @@ class OpsIntegrationTest extends ShopIntegrationSupport {
         String secret = data(ok(g, "POST", "/admin/login/mfa/setup", Map.of("setupToken", tokenA), 200)).path("secret").asText();
         var enrolled = call(g, "POST", "/admin/login/mfa/enroll", Map.of("setupToken", tokenA, "code", StaffLogin.totp(secret, step())));
         assertEquals(200, enrolled.getResponse().getStatus(), text(enrolled));
+        assertFalse(data(enrolled).path("backupCodesRequired").asBoolean(), "一般員工可略過保存");
         assertEquals(409, call(g, "POST", "/admin/login/mfa/setup", Map.of("setupToken", tokenB)).getResponse().getStatus(), "已綁定後另一枚綁定 token 不能重設密鑰");
         var s = new Client(g.csrf(), List.of(g.cookies().get(0), cookie(enrolled, "accessToken"), cookie(enrolled, "refreshToken")), String.valueOf(staffId));
+        assertEquals(200, call(s, "GET", "/admin/reports/low-stock", null).getResponse().getStatus(), "一般員工綁定後不需確認即可使用");
+        assertFalse(data(ok(s, "POST", "/admin/mfa/backup-codes/ack", Map.of("downloaded", false, "confirmed", false), 200)).path("backupAckPending").asBoolean(), "略過只寫稽核");
+        assertTrue(jdbc.queryForObject("SELECT COUNT(*) FROM staff_mfa_event WHERE user_id=? AND action='BACKUP_SKIP'", Integer.class, staffId) >= 1);
         // 已登入 session 也不能無限猜碼重新產生備援碼
         boolean capped = false;
         for (int i = 0; i < 12 && !capped; i++) capped = call(s, "POST", "/admin/mfa/backup-codes", Map.of("code", "88888" + (i % 10))).getResponse().getStatus() == 429;

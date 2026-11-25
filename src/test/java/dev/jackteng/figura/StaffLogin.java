@@ -48,8 +48,18 @@ final class StaffLogin {
         var setup = mvc.perform(post("/figura/api/admin/login/mfa/setup").contextPath("/figura").servletPath("/api/admin/login/mfa/setup").cookie(cookies).header("X-XSRF-TOKEN", csrf)
                 .contentType("application/json").content(json.writeValueAsBytes(Map.of("setupToken", token)))).andReturn();
         String secret = json.readTree(setup.getResponse().getContentAsString(StandardCharsets.UTF_8)).path("data").path("secret").asText();
-        return mvc.perform(post("/figura/api/admin/login/mfa/enroll").contextPath("/figura").servletPath("/api/admin/login/mfa/enroll").cookie(cookies).header("X-XSRF-TOKEN", csrf)
+        var enrolled = mvc.perform(post("/figura/api/admin/login/mfa/enroll").contextPath("/figura").servletPath("/api/admin/login/mfa/enroll").cookie(cookies).header("X-XSRF-TOKEN", csrf)
                 .contentType("application/json").content(json.writeValueAsBytes(Map.of("setupToken", token, "code", totp(secret, System.currentTimeMillis() / 1000 / 30))))).andReturn();
+        // 系統管理員／店長必須完成備援碼保存確認才能使用業務 API（等同頁面上已下載並勾選）
+        if (json.readTree(enrolled.getResponse().getContentAsString(StandardCharsets.UTF_8)).path("data").path("backupCodesRequired").asBoolean()) {
+            var session = new java.util.ArrayList<>(java.util.Arrays.asList(cookies));
+            for (String h : enrolled.getResponse().getHeaders("Set-Cookie"))
+                for (String name : new String[]{"accessToken", "refreshToken"}) if (h.startsWith(name + "=")) session.add(new Cookie(name, h.split(";", 2)[0].substring(name.length() + 1)));
+            var ack = mvc.perform(post("/figura/api/admin/mfa/backup-codes/ack").contextPath("/figura").servletPath("/api/admin/mfa/backup-codes/ack").cookie(session.toArray(Cookie[]::new))
+                    .header("X-XSRF-TOKEN", csrf).contentType("application/json").content(json.writeValueAsBytes(Map.of("downloaded", true, "confirmed", true)))).andReturn();
+            if (ack.getResponse().getStatus() != 200) throw new IllegalStateException("backup code acknowledgement failed: " + ack.getResponse().getContentAsString(StandardCharsets.UTF_8));
+        }
+        return enrolled;
     }
 
     static String totp(String base32, long step) throws Exception {

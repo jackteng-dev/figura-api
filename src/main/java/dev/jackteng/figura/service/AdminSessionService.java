@@ -55,7 +55,10 @@ public class AdminSessionService {
         var e = mfa.enroll(setupToken, code);
         User user = sessionUser(e.pending());
         user = issue(user, e.pending().device(), e.pending().remember(), response);
-        user.setBackupCodes(e.backupCodes());
+        user.setBackupCodes(e.backup().codes());
+        user.setBackupCodesRequired(e.backup().required());
+        user.setBackupCodesGeneratedAt(e.backup().generatedAt());
+        user.setMfaBackupAckPending(e.backup().required());
         return user;
     }
     private User sessionUser(StaffMfaService.Pending p) {
@@ -90,7 +93,9 @@ public class AdminSessionService {
         var claims = verified(token, "access");
         if (!claims.get("jti").equals(redis.opsForValue().get(key(claims)))) throw unauthorized();
         User user = activeUser(claims); user.setPermissions(permissions(user.getId()));
-        if (user.getPermissions().isEmpty()) throw unauthorized(); return user;
+        if (user.getPermissions().isEmpty()) throw unauthorized();
+        if (mfa != null) user.setMfaBackupAckPending(mfa.ackPending(user.getId()));
+        return user;
     }
     public void logout(String token, HttpServletResponse response) {
         try { var claims = verified(token, "refresh"); redis.execute(REVOKE, List.of(key(claims)), claims.get("jti")); }
