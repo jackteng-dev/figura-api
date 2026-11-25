@@ -76,7 +76,8 @@ public class StaffMfaService {
     /** backupAckPending：需完成備援碼保存確認才能使用業務 API；backupCodesRequired：此員工必須保存備援碼（具 access.mfa.reset）。 */
     public record Status(boolean available, boolean enabled, int backupCodesRemaining, boolean backupAckPending, boolean backupCodesRequired) {}
     /** 新產生的備援碼：只在這次回應出現一次；伺服器只保存雜湊。 */
-    public record BackupCodes(List<String> codes, String username, java.time.OffsetDateTime generatedAt, boolean required) {}
+    /** batchId：這一批備援碼的識別碼；保存確認必須帶回，舊批次不能確認新批次。 */
+    public record BackupCodes(List<String> codes, String username, java.time.OffsetDateTime generatedAt, boolean required, String batchId) {}
     public record Setup(String secret, String otpauthUri) {}
     /** authVersion：簽發 token 當下的 user.auth_version；重設會遞增，舊流程因此失效。 */
     public record Pending(int user, String username, String device, boolean remember, int authVersion) {}
@@ -93,31 +94,38 @@ public class StaffMfaService {
                 + " JOIN permissions_backend p ON p.id=rp.permission_id WHERE ur.user_id=? AND p.code='access.mfa.reset'", Integer.class, user);
         return n != null && n > 0;
     }
+    /**
+     * 是否需要完成保存確認：依「目前」權限即時判斷——具 access.mfa.reset 且已確認批次 ≠ 目前批次。
+     * 員工被升權後即使先前略過，也會立即要求（需重新產生、下載並確認）。
+     */
     public boolean ackPending(int user) {
-        var rows = db.queryForList("SELECT backup_ack_pending FROM staff_mfa WHERE user_id=? AND enabled=TRUE", user);
-        return !rows.isEmpty() && truthy(rows.get(0).get("backup_ack_pending"));
+        var rows = db.queryForList("SELECT backup_batch_id,backup_confirmed_batch_id FROM staff_mfa WHERE user_id=? AND enabled=TRUE", user);
+        if (rows.isEmpty()) return false;
+        var r = rows.get(0);
+        return !Objects.equals(r.get("backup_batch_id"), r.get("backup_confirmed_batch_id")) && backupRequired(user);
     }
-    /** 產生備援碼並視權限設定「待確認保存」（呼叫端已持有員工列與 MFA 列鎖）。 */
+    /** 產生新的一批備援碼（呼叫端已持有員工列與 MFA 列鎖）；舊批次與其確認一併失效。 */
     private BackupCodes issueBackupCodes(int user) {
         var codes = newBackupCodes(user);
-        boolean required = backupRequired(user);
-        db.update("UPDATE staff_mfa SET backup_ack_pending=? WHERE user_id=?", required, user);
+        String batch = UUID.randomUUID().toString();
+        db.update("UPDATE staff_mfa SET backup_batch_id=? WHERE user_id=?", batch, user);
         var at = db.queryForObject("SELECT CURRENT_TIMESTAMP(6)", java.time.LocalDateTime.class);
-        return new BackupCodes(codes, db.queryForObject("SELECT username FROM user WHERE id=?", String.class, user), at.atOffset(java.time.ZoneOffset.ofHours(8)), required);
+        return new BackupCodes(codes, db.queryForObject("SELECT username FROM user WHERE id=?", String.class, user), at.atOffset(java.time.ZoneOffset.ofHours(8)), backupRequired(user), batch);
     }
     /**
      * 備援碼保存確認。伺服器無法驗證檔案是否確實保存：只記錄使用者在頁面上「已觸發下載並勾選確認」或「略過」。
      * 必須保存者（待確認中）只能以 downloaded=true 且 confirmed=true 解除；其他員工可略過（只寫稽核）。
      */
     @Transactional
-    public Status acknowledge(int user, boolean downloaded, boolean confirmed) {
+    public Status acknowledge(int user, String batchId, boolean downloaded, boolean confirmed) {
         var row = lock(user, null);
         if (row == null || !truthy(row.get("enabled"))) throw fail(409, "尚未完成雙因素綁定");
-        boolean pending = truthy(row.get("backup_ack_pending"));
-        if (pending && !(downloaded && confirmed)) throw fail(400, "請先下載備援碼並勾選已妥善保存");
-        if (pending) db.update("UPDATE staff_mfa SET backup_ack_pending=FALSE WHERE user_id=?", user);
+        if (batchId == null || !batchId.equals(row.get("backup_batch_id"))) throw fail(409, "備援碼已重新產生，這份已失效；請以最新一組確認");
+        boolean required = backupRequired(user), saved = downloaded && confirmed;
+        if (required && !saved) throw fail(400, "請先下載備援碼並勾選已妥善保存");
+        if (saved) db.update("UPDATE staff_mfa SET backup_confirmed_batch_id=? WHERE user_id=? AND backup_batch_id=?", batchId, user, batchId);
         event(user, downloaded ? "BACKUP_ACK" : "BACKUP_SKIP", null,
-                downloaded ? "頁面已觸發下載" + (confirmed ? "並勾選保存確認" : "") + "（無法驗證檔案是否確實保存）" : "使用者選擇略過下載");
+                (downloaded ? "頁面已觸發下載" + (confirmed ? "並勾選保存確認" : "") + "（無法驗證檔案是否確實保存）" : "使用者選擇略過下載") + "；批次 " + batchId);
         return status(user);
     }
     public boolean enabled(int user) {

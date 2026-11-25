@@ -56,7 +56,7 @@ final class StaffLogin {
             for (String h : enrolled.getResponse().getHeaders("Set-Cookie"))
                 for (String name : new String[]{"accessToken", "refreshToken"}) if (h.startsWith(name + "=")) session.add(new Cookie(name, h.split(";", 2)[0].substring(name.length() + 1)));
             var ack = mvc.perform(post("/figura/api/admin/mfa/backup-codes/ack").contextPath("/figura").servletPath("/api/admin/mfa/backup-codes/ack").cookie(session.toArray(Cookie[]::new))
-                    .header("X-XSRF-TOKEN", csrf).contentType("application/json").content(json.writeValueAsBytes(Map.of("downloaded", true, "confirmed", true)))).andReturn();
+                    .header("X-XSRF-TOKEN", csrf).contentType("application/json").content(json.writeValueAsBytes(Map.of("batchId", json.readTree(enrolled.getResponse().getContentAsString(StandardCharsets.UTF_8)).path("data").path("backupBatchId").asText(), "downloaded", true, "confirmed", true)))).andReturn();
             if (ack.getResponse().getStatus() != 200) throw new IllegalStateException("backup code acknowledgement failed: " + ack.getResponse().getContentAsString(StandardCharsets.UTF_8));
         }
         return enrolled;

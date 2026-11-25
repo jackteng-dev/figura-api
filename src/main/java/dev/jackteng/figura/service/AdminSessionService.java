@@ -58,6 +58,7 @@ public class AdminSessionService {
         user.setBackupCodes(e.backup().codes());
         user.setBackupCodesRequired(e.backup().required());
         user.setBackupCodesGeneratedAt(e.backup().generatedAt());
+        user.setBackupBatchId(e.backup().batchId());
         user.setMfaBackupAckPending(e.backup().required());
         return user;
     }
