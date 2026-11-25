@@ -57,7 +57,7 @@ class CatalogIntegrationTest {
         assertFalse(data(call(null,"GET","/catalog/products",null)).path("items").toString().contains(id));
         var published=publish(admin,p,true);assertEquals(200,published.getResponse().getStatus());p=data(published);
         var publicData=data(call(null,"GET","/catalog/products/"+id,null));
-        assertEquals(Set.of("id","title","brand","category","description","skus","image","work"),json.convertValue(publicData,Map.class).keySet());
+        assertEquals(Set.of("id","title","brand","category","description","skus","image","work","specs","contentOrigin","availability","minPriceTwd","preorder","updatedAt"),json.convertValue(publicData,Map.class).keySet());
         assertEquals(1,publicData.path("skus").size());assertEquals(1280,publicData.path("skus").get(0).path("priceTwd").asInt());
         assertEquals(Set.of("id","label","priceTwd","available"),json.convertValue(publicData.path("skus").get(0),Map.class).keySet());
         assertTrue(data(call(null,"GET","/catalog/products",null)).path("items").toString().contains(id));
