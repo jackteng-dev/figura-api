@@ -24,9 +24,10 @@ import java.util.regex.Pattern;
 public class SeoService {
     static final String SITE = "Figura", DEFAULT_DESC = "Figura 公仔與收藏品：現貨、預購批次、規格清楚標示。本站目前為展示用沙盒，付款與配送皆為模擬演練。";
     private static final Pattern PRODUCT = Pattern.compile("^/shop/products/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$");
+    private static final Pattern POLICY = Pattern.compile("^/shop/pages/([a-z0-9-]{1,40})$");
     private static final Pattern GUIDE = Pattern.compile("^/shop/guides/([a-z0-9-]{1,40})$");
     private static final Set<String> NOINDEX_PREFIX = Set.of("/shop/cart", "/shop/checkout", "/shop/buy-now", "/shop/login", "/shop/register", "/shop/forgot-password",
-            "/shop/reset-password", "/shop/verify-email", "/shop/account", "/shop/my-orders", "/shop/orders", "/shop/preorder-orders", "/shop/addresses", "/shop/favorites", "/shop/notifications");
+            "/shop/reset-password", "/shop/verify-email", "/shop/account", "/shop/my-orders", "/shop/orders", "/shop/preorder-orders", "/shop/addresses", "/shop/favorites", "/shop/notifications", "/shop/shipments", "/shop/support");
     private final CatalogService catalog; private final JdbcTemplate db; private final ObjectMapper json;
     private final String base; private final boolean offers;
 
@@ -50,6 +51,8 @@ public class SeoService {
         if (path.equals("/shop/preorders")) return simple("預購情報｜" + SITE, "Figura 開放中的預購批次：截單時間、預計到貨區間與配額。", "/shop/preorders", true, "<h1>預購情報</h1><p>查看開放中的預購批次、截單時間與預計到貨區間。</p>" + guideLinks());
         if (path.equals("/shop/guides")) return guides();
         var g = GUIDE.matcher(path); if (g.matches()) return guide(g.group(1));
+        if (path.equals("/shop/pages")) return simple("政策與說明｜" + SITE, "Figura 的服務條款、隱私權、配送與退換貨說明（以已審核發布的版本為準）。", "/shop/pages", true, "<h1>政策與說明</h1>");
+        var pg = POLICY.matcher(path); if (pg.matches()) return policy(pg.group(1));
         var m = PRODUCT.matcher(path); if (m.matches()) return product(m.group(1));
         for (String p : NOINDEX_PREFIX) if (path.equals(p) || path.startsWith(p + "/")) return simple(SITE, DEFAULT_DESC, path, false, "");
         if (path.equals("/") || path.startsWith("/shop/")) return path.startsWith("/shop/") ? notFound(path) : simple(SITE, DEFAULT_DESC, "/shop", false, "");
@@ -169,6 +172,19 @@ public class SeoService {
         return new Page(g.title() + "｜" + SITE, g.description(), "/shop/guides/" + slug, true, "article", null, ld, b.toString(), true);
     }
 
+    /** 只有審核發布的政策頁可索引；未發布的頁面 noindex，不輸出草稿。 */
+    private Page policy(String slug) {
+        var rows = db.queryForList("SELECT published_title,published_body,published_revision FROM site_page WHERE slug=?", slug);
+        if (rows.isEmpty()) return notFound("/shop/pages/" + slug);
+        var r = rows.get(0);
+        if (((Number) r.get("published_revision")).intValue() == 0) return simple("條款審核中｜" + SITE, "這個頁面的正式內容審核中。", "/shop/pages/" + slug, false, "<h1>條款審核中</h1>");
+        String title = (String) r.get("published_title"), body = (String) r.get("published_body");
+        var b = new StringBuilder("<article><h1>").append(esc(title)).append("</h1>");
+        for (String para : body.split("\\n+")) if (!para.isBlank()) b.append("<p>").append(esc(para.trim())).append("</p>");
+        String desc = body.replaceAll("[\\s]+", " ").trim();
+        return simple(title + "｜" + SITE, desc.length() > 120 ? desc.substring(0, 120) + "…" : desc, "/shop/pages/" + slug, true, b.append("</article>").toString());
+    }
+
     private Page notFound(String path) {
         return new Page("找不到頁面｜" + SITE, "這個頁面不存在或商品已下架。", path, false, "website", null, List.of(),
                 "<h1>找不到頁面</h1><p>這個頁面不存在或商品已下架。</p><p><a href=\"/shop/products\">瀏覽所有商品</a></p>", false);
@@ -198,6 +214,7 @@ public class SeoService {
         var x = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n");
         for (String p : List.of("/shop", "/shop/products", "/shop/preorders", "/shop/guides")) x.append(url(p, null));
         GuideCatalog.ALL.forEach(g -> x.append(url("/shop/guides/" + g.slug(), g.updated())));
+        db.query("SELECT slug,DATE_FORMAT(published_at,'%Y-%m-%d') d FROM site_page WHERE published_revision>0 ORDER BY slug", rs -> { x.append(url("/shop/pages/" + rs.getString("slug"), rs.getString("d"))); });
         // 只列上架且有啟用款式的商品；lastmod 取商品更新時間
         db.query("SELECT p.id,DATE_FORMAT(p.updated_at,'%Y-%m-%d') d FROM catalog_product p WHERE p.status='PUBLISHED' AND EXISTS(SELECT 1 FROM catalog_sku s WHERE s.product_id=p.id AND s.enabled=TRUE) ORDER BY p.created_at DESC,p.id LIMIT 45000",
                 rs -> { x.append(url("/shop/products/" + rs.getString("id"), rs.getString("d"))); });
