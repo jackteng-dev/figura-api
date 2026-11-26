@@ -24,7 +24,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
  * 權限受限、有上限、到期拒絕並清理乾淨。正式模式行為見 SandboxDisabledIntegrationTest。
  */
 @SpringBootTest(properties = {"shop.orders.expiry-delay-ms=600000", "SHOP_SANDBOX_MODE=true", "SANDBOX_MFA_EXEMPT_USERNAMES=" + SandboxIntegrationTest.SHARED,
-        "SANDBOX_MFA_DEMO_ENABLED=true", "SANDBOX_MFA_DEMO_MAX_ACTIVE=3", "SANDBOX_MFA_DEMO_TTL_MINUTES=30", "shop.sandbox.cleanup-delay-ms=3600000"})
+        "SANDBOX_MFA_DEMO_ENABLED=true", "SANDBOX_MFA_DEMO_MAX_ACTIVE=3", "SANDBOX_MFA_DEMO_TTL_MINUTES=30", "shop.sandbox.cleanup-delay-ms=3600000",
+        // 與 SandboxSeederIntegrationTest 完全相同，共用同一個 Spring context（CI MySQL 連線數有限）
+        "MOCK_PAYMENTS_ENABLED=true", "MOCK_FULFILLMENT_ENABLED=true", "MOCK_RETURNS_ENABLED=true", "MOCK_REFUNDS_ENABLED=true"})
 @AutoConfigureMockMvc(print = MockMvcPrint.NONE) @ActiveProfiles("demo")
 @EnabledIfEnvironmentVariable(named = "SHOP_MYSQL_INTEGRATION", matches = "true")
 class SandboxIntegrationTest extends ShopIntegrationSupport {

@@ -70,9 +70,68 @@
 
 `/api/auth/me` 回 `accountKind`（`STAFF`／`SANDBOX_SHARED`／`SANDBOX_MFA_DEMO`）。MFA 展示帳號另回 `sandboxExpiresAt`。這兩個欄位只供前端顯示，後端授權不依賴它們。
 
-## 4. 沙盒初始化（seed）
+## 4. 沙盒初始化入口（spec 2.4）
 
-不需員工登入的初始化入口（spec 2.4）**尚未完成**，列為下一個 PR。過渡期沿用伺服器端的 HTTP seed，但必須改用 `SANDBOX_MFA_EXEMPT_USERNAMES` 內的共用帳號登入，因為非豁免帳號會被要求 MFA。
+**沒有任何 HTTP 端點。** 初始化只能由伺服器以一次性程序執行，完成後程序結束：
+
+```
+docker compose run --rm -v /usr/local/share/sandbox/figura/seed:/seed:ro api --sandbox.seed.dir=/seed
+```
+
+### 執行條件（任一不符立即失敗，不寫入任何資料）
+- `SHOP_SANDBOX_MODE=true`、demo profile，且資料庫名稱是隔離的 `figura_shop_demo`。
+- 參數只讀**命令列** `--sandbox.seed.dir`，不讀環境變數或設定檔；一般啟動（沒有這個參數）完全不動作。
+- 同一時間只能執行一個：以 MySQL 具名鎖 `figura_sandbox_seed` 獨占，拿不到鎖立即失敗。
+
+### 資源格式（schemaVersion 2）與驗證
+- `catalog.json` 加上 `images/`：
+  - 欄位沿用伺服器 `templates/sandbox/figura/catalog.json`：`items`、`customers`、`orders`、`aiDisclosureMarker`。
+  - 每件商品加上 `images[]`：`MAIN`、`FACE`、`DETAIL`、`SCENE`、`REAR` 依序 5 張，`position` 0–4，每張有 `file`、`sha256`、`contentType`、`alt`。
+- **全部驗證通過才開始寫入**：
+  - 結構與數值範圍；`code` 格式 `FIGURA-AI-NNN` 不重複。
+  - `description` 必須以 AI 標示開頭。
+  - 訂單只能引用現貨商品，數量不超過現貨。
+  - 會員 email 必須是 `example.com`／`example.test` 虛構信箱。
+  - 每個圖片檔必須在 seed 目錄內：不可 `..`、不可符號連結，且是一般檔案；大小 ≤ 5MB；檔頭符合 PNG／JPEG；SHA-256 與 `sha256` 相同。
+  - 缺檔或 SHA 不符 → exit 4。
+- 驗證時串流計算 SHA，不把圖片全部放進記憶體。上傳前再讀一次並重新核對 SHA，驗證後檔案若被更換也會失敗。
+- 圖片交給既有圖片 service 重新編碼（PNG 結果與原檔相同；JPEG 會改變 SHA，屬預期）。驗證的是來源檔 SHA。
+
+### 執行方式
+- 以系統員工 `sandbox-seeder` 呼叫**既有 service**；所有稽核事件的 actor 都是它。
+  - 它只有初始化所需的權限，透過「沙盒初始化」角色授予：`masters.create`、`catalog.write.create`、`catalog.publish`、`catalog.images.upload`、`inventory.adjust`、`preorders.create`、`preorders.open`、`orders.ship.mock`、`orders.deliver.mock`。
+  - 密碼是沒有人知道的隨機值，登入另需 MFA。
+  - 只在執行期間啟用，結束後（含失敗）立即停用並遞增 `auth_version`。
+- 每件商品的順序與現行 HTTP seed 相同：
+  1. 主檔：依名稱沿用或建立。
+  2. 草稿商品：1 個 SKU，`contentOrigin=AI_CONCEPT`，其他規格不填。
+  3. 依序上傳 5 張圖（MAIN 成為主圖）。
+  4. 上架。
+  5. 現貨商品以 `RESTOCK` 補庫存（note「沙盒展示庫存」）。
+  6. 預購商品建立批次並開放；日期相對執行當天（Asia/Taipei）。
+- 建立順序：依 series 交錯排列後反向。
+- 會員：
+  - `builtin` 會員必須已由 API 以 `DEMO_CUSTOMER_PASSWORD` 建立，不存在就失敗。
+  - 其他會員以**執行時隨機產生**的密碼註冊，不輸出、不保存明文。
+- 訂單：購物車下單 → 模擬付款 → 模擬出貨 → 模擬送達 → 顧客申請模擬退貨，依 `state` 停在對應步驟。全部是模擬，沒有實際收款或物流。
+
+### 冪等與重跑
+- 所有操作編號由 seed 內容決定（UUID v3）。
+- 已存在的商品（以 SKU code）、圖片類型、庫存調整、預購批次、會員（以 email）、訂單（以下單編號）都不重複建立。
+- 訂單依**目前狀態**接續未完成的步驟。
+- 中途失敗（exit 1）可直接重跑完成，但不是單一交易。伺服器的 reset 流程仍須「失敗就還原 last-good 快照」。
+
+### 結果
+- 成功（exit 0）時在 stdout 輸出一行 JSON 摘要，只含數量：
+  ```json
+  {"result":"SEEDED","products":95,"published":95,"preorders":64,"orders":8,"images":{"MAIN":95,"FACE":95,"DETAIL":95,"SCENE":95,"REAR":95}}
+  ```
+- 摘要前會以 DB 核對；數量不符時視為失敗（exit 1）。
+- Exit code：0 成功；1 執行中失敗（可重跑）；2 參數錯誤；3 環境不允許（非沙盒、非 demo、非隔離 DB、另一個初始化執行中）；4 資源驗證失敗（未寫入）。
+
+### 不在範圍
+- 主檔品牌改名（`brand-rename.sql`）仍由伺服器 reset 流程處理；Seeder 建立的主檔只依 catalog 的名稱。
+- 員工展示帳號與內建示範會員由 API 啟動時建立（`DEMO_*_PASSWORD`）。
 
 ## 5. 驗收
 
@@ -87,4 +146,4 @@
 - 「體驗 MFA 安全設計」完整走完 QR 綁定 → 驗證碼 → 備援碼下載與確認 → 登出重登 → 備援碼登入。
 - 超量回 429；到期帳號被拒絕並清除。
 
-自動化測試：`SandboxModeTest`、`SandboxIntegrationTest`、`SandboxDisabledIntegrationTest`。
+自動化測試：`SandboxModeTest`、`SandboxIntegrationTest`、`SandboxDisabledIntegrationTest`、`SandboxSeedCatalogTest`、`SandboxSeederIntegrationTest`（需 SeaweedFS）。

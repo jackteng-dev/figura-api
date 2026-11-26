@@ -1,5 +1,29 @@
 # Figura（原 ELPSY Shop） 後端交接
 
+## 2026-11-27：公開沙盒初始化入口（spec 2.4，分支 `feat/sandbox-seeder`，基於 PR #19，未合併）
+
+- **完成**：
+  - `SandboxSeedCatalog`：spec 第 3 節 v2 格式的完整驗證，在任何寫入前失敗。
+  - `SandboxSeeder`：命令列 `--sandbox.seed.dir` 觸發的一次性程序，沒有 HTTP。
+    - 需要沙盒模式、demo profile、隔離 DB，並以 MySQL 具名鎖獨占。
+    - 由權限受限、執行完即停用的系統帳號 `sandbox-seeder` 呼叫既有 service。
+    - 涵蓋：主檔、商品、5 張圖、上架、庫存、預購、會員（隨機密碼）、8 種狀態的示範訂單。
+    - 以決定性操作編號與目前狀態冪等；摘要只含數量。
+  - 細節見 `docs/SANDBOX.md` §4。
+- **格式來源**：作者提供的 `figura-sandbox-seed-format-20261127.zip`（伺服器現行 catalog.json、v2 建議格式、schema）。
+- **測試**：
+  - `SandboxSeedCatalogTest`（5）：缺檔、SHA 不符、類型與內容不符、路徑跳出、結構規則、建立順序。
+  - `SandboxSeederIntegrationTest`（2，需 SeaweedFS）：
+    - 驗證失敗 exit 4 且無寫入。
+    - 95 件 × 5 張圖的類型、排序、主圖正確；AI 標示保留；30 件現貨、64 個預購、8 筆訂單；系統帳號停用。
+    - 重跑沒有任何重複建立。
+  - `SandboxDisabledIntegrationTest`：正式設定 exit 3 且不寫入；一般啟動不動作。
+- **伺服器端待辦**：
+  - 把 seed 資源放到 `/usr/local/share/sandbox/figura/seed/`（catalog.json v2＋images/），唯讀掛載。
+  - reset 改用 `docker compose run --rm ... api --sandbox.seed.dir=/seed`，依 exit code 判斷成功；失敗時還原 last-good。
+  - 沙盒 env 需開啟 `MOCK_PAYMENTS／FULFILLMENT／RETURNS_ENABLED`，與現行 seed 相同。
+- **未改**：`src/main/resources`（沒有新 migration）。
+
 ## 2026-11-26：公開沙盒 MFA 展示與快速展示帳號（V34，分支 `feat/sandbox-mfa-demo`，未合併）
 
 依作者 spec《Figura 公開沙盒：MFA 展示、快速展示帳號、商品多圖與受控重置 v2》第 2.1–2.3、2.5–2.6 節。
