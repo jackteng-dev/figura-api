@@ -117,7 +117,8 @@ class SandboxIntegrationTest extends ShopIntegrationSupport {
         assertEquals(401, password(guest(), SHARED, "wrong-password-0000").getResponse().getStatus());
         var admin = password(guest(), "shop_admin", System.getenv("DEMO_ADMIN_PASSWORD"));
         assertEquals(200, admin.getResponse().getStatus());
-        assertTrue(data(admin).path("mfaSetupRequired").asBoolean(), "非豁免員工仍強制 MFA"); assertFalse(session(admin));
+        // 已綁定（其他測試留下）回 mfaRequired、未綁定回 mfaSetupRequired；兩者都必須再過 MFA，且都不發 session
+        assertTrue(data(admin).path("mfaSetupRequired").asBoolean() || data(admin).path("mfaRequired").asBoolean(), "非豁免員工仍強制 MFA"); assertFalse(session(admin));
     }
 
     private com.fasterxml.jackson.databind.JsonNode createDemo() throws Exception {

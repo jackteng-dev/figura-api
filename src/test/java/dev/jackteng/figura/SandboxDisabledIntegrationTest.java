@@ -49,7 +49,7 @@ class SandboxDisabledIntegrationTest extends ShopIntegrationSupport {
                 .param("username", "shop_admin").param("password", System.getenv("DEMO_ADMIN_PASSWORD")).param("deviceId", uuid())
                 .param("mfaExempt", "true").param("sandbox", "true").param("accountKind", "SANDBOX_SHARED")).andReturn();
         assertEquals(200, r.getResponse().getStatus());
-        assertTrue(data(r).path("mfaSetupRequired").asBoolean(), "仍要求綁定"); assertFalse(session(r), "沒有 session cookie");
+        assertTrue(data(r).path("mfaSetupRequired").asBoolean() || data(r).path("mfaRequired").asBoolean(), "仍要求 MFA"); assertFalse(session(r), "沒有 session cookie");
         assertTrue(data(r).path("accountKind").isMissingNode());
     }
 
