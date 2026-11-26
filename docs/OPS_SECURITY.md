@@ -44,6 +44,22 @@
 
 權限：`access.mfa.reset`（285）預設只給角色 1（系統管理員／店長）。
 
+## 公開沙盒模式（V34；正式環境絕不可設定）
+
+詳見 `docs/SANDBOX.md`。重點：
+- 所有沙盒功能預設關閉，只能由伺服器環境變數 `SHOP_SANDBOX_MODE=true` 開啟。
+- 共用帳號 MFA 豁免另需 `SANDBOX_MFA_EXEMPT_USERNAMES`；MFA 展示臨時帳號另需 `SANDBOX_MFA_DEMO_ENABLED=true`。
+- **正式環境不得出現任何 `SHOP_SANDBOX_*`／`SANDBOX_*` 變數。**
+  - 總開關沒開卻設了其他沙盒變數 → API 拒絕啟動。
+  - 沙盒模式與 `shop.payments.ecpay.live=true` 同時出現 → 拒絕啟動。
+- 請求參數、header、cookie 都無法開啟沙盒或略過 MFA。
+- 正式設定下，帶 `mfa=SANDBOX_SHARED` 標記的 session 一律 401；`/api/sandbox/**` 回 404。
+
+驗收（正式環境）：
+- `shop_admin` 密碼登入回 `mfaSetupRequired=true` 且沒有 session Cookie。
+- `GET /api/sandbox/config` 回 404。
+- `/admin/ops/status` 的 `sandboxMode=false`、`mfaExemptAccounts=0`。
+
 ## 會員／員工隔離（現況確認）
 
 顧客與員工使用不同的資料表、Cookie、JWT realm 與 Redis namespace（見 AGENTS.md「顧客身分」）。員工 API 由 `JwtAuthenticationFilter` 依 `permissions_backend` 的 URL＋方法即時比對；顧客 API 只允許 `customerRouteAllowed` 白名單路徑。本階段新增的所有顧客端點都已加入白名單並以 `CustomerPrincipal` 取本人資料。

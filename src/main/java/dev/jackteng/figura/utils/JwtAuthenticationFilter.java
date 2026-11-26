@@ -23,6 +23,8 @@ import java.util.Set;
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final Set<String> PUBLIC = Set.of("/api/admin/login", "/api/admin/login/mfa", "/api/admin/login/mfa/setup", "/api/admin/login/mfa/enroll", "/api/admin/logout", "/api/auth/refresh", "/api/auth/csrf",
+            // 公開沙盒：正式環境這兩個路徑沒有功能（回 404），沙盒模式才提供設定與臨時帳號建立
+            "/api/sandbox/config", "/api/sandbox/mfa-demo/accounts",
             "/api/customer/auth/register", "/api/customer/auth/login", "/api/customer/auth/refresh", "/api/customer/auth/logout",
             "/api/customer/auth/email/verify", "/api/customer/auth/password/forgot", "/api/customer/auth/password/reset");
     private final AdminSessionService sessions;
@@ -68,6 +70,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             response.setStatus(403); response.setContentType("application/json"); response.setCharacterEncoding("UTF-8");
             response.getWriter().write("{\"code\":1,\"errorCode\":\"MFA_BACKUP_ACK_REQUIRED\",\"message\":\"請先下載並確認保存雙因素備援碼\",\"data\":null}");
             return;
+        }
+        // 公開沙盒帳號限制（帳號類型由後端依目前設定判斷，不信任任何請求內容）
+        String method = request.getMethod();
+        if ("SANDBOX_SHARED".equals(user.getAccountKind())) {
+            // 共用展示帳號：不能管理 MFA／備援碼、員工與角色、上傳，也不能改任何人的帳密或安全設定
+            boolean security = (path.startsWith("/api/admin/mfa") && !"GET".equals(method))
+                    || (path.startsWith("/api/admin/access/") && !"GET".equals(method))
+                    || path.equals("/api/upload") || path.startsWith("/api/upload/");
+            if (security) { errorCode(response, 403, "SANDBOX_SHARED_ACCOUNT", "這是公開沙盒的共用展示帳號，已停用安全設定變更"); return; }
+        } else if ("SANDBOX_MFA_DEMO".equals(user.getAccountKind())) {
+            // MFA 展示臨時帳號：只能讀取，以及操作自己的 MFA（重新產生／確認備援碼）
+            boolean selfMfa = "POST".equals(method) && (path.equals("/api/admin/mfa/backup-codes") || path.equals("/api/admin/mfa/backup-codes/ack"));
+            if (!"GET".equals(method) && !selfMfa) { errorCode(response, 403, "SANDBOX_DEMO_ACCOUNT", "MFA 展示帳號只能瀏覽與操作自己的雙因素設定"); return; }
         }
         // 雙因素自助設定：任何已登入員工都可管理自己的 MFA，不需額外權限
         boolean self = path.equals("/api/admin/mfa") || matcher.match("/api/admin/mfa/*", path) || path.equals("/api/admin/mfa/backup-codes/ack");
@@ -124,6 +139,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     || (path.equals("/api/customer/support-tickets")&&(method.equals("GET")||method.equals("POST")))
                     || (matcher.match("/api/customer/support-tickets/*",path)&&method.equals("GET"))
                     || (matcher.match("/api/customer/support-tickets/*/messages",path)&&method.equals("POST"));
+    }
+    private void errorCode(HttpServletResponse response, int status, String code, String message) throws IOException {
+        response.setStatus(status); response.setContentType("application/json"); response.setCharacterEncoding("UTF-8");
+        response.getWriter().write("{\"code\":1,\"errorCode\":\"" + code + "\",\"message\":\"" + message + "\",\"data\":null}");
     }
     private void error(HttpServletResponse response, int status, String message) throws IOException {
         response.setStatus(status); response.setContentType("application/json"); response.setCharacterEncoding("UTF-8");

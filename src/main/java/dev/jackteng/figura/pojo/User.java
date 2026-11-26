@@ -43,4 +43,8 @@ public class User {
     @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) private String backupBatchId;
     /** 尚未完成備援碼保存確認：業務 API 會回 403（MFA_BACKUP_ACK_REQUIRED）。 */
     @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) private Boolean mfaBackupAckPending;
+    /** STAFF／SANDBOX_SHARED／SANDBOX_MFA_DEMO：只供前端顯示，後端授權不依賴。 */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) private String accountKind;
+    /** MFA 展示臨時帳號的到期時間（其他帳號不回傳）。 */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) private java.time.OffsetDateTime sandboxExpiresAt;
 }
