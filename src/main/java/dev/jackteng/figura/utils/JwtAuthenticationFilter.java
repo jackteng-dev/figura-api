@@ -22,7 +22,7 @@ import java.util.Set;
 
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
-    private static final Set<String> PUBLIC = Set.of("/api/admin/login", "/api/admin/logout", "/api/auth/refresh", "/api/auth/csrf",
+    private static final Set<String> PUBLIC = Set.of("/api/admin/login", "/api/admin/login/mfa", "/api/admin/login/mfa/setup", "/api/admin/login/mfa/enroll", "/api/admin/logout", "/api/auth/refresh", "/api/auth/csrf",
             "/api/customer/auth/register", "/api/customer/auth/login", "/api/customer/auth/refresh", "/api/customer/auth/logout",
             "/api/customer/auth/email/verify", "/api/customer/auth/password/forgot", "/api/customer/auth/password/reset");
     private final AdminSessionService sessions;
@@ -32,7 +32,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain) throws ServletException, IOException {
         String path = request.getServletPath();
-        if ("GET".equals(request.getMethod()) && (path.equals("/api/catalog/preorders") || matcher.match("/api/catalog/preorders/*",path) || path.equals("/api/catalog/products") || matcher.match("/api/catalog/products/*",path) || matcher.match("/api/catalog/products/*/image/*",path) || matcher.match("/api/catalog/products/*/image",path))) {
+        if ("GET".equals(request.getMethod()) && (path.equals("/api/catalog/preorders") || matcher.match("/api/catalog/preorders/*",path) || path.equals("/api/catalog/products") || path.equals("/api/catalog/facets") || matcher.match("/api/catalog/products/*",path) || matcher.match("/api/catalog/products/*/image/*",path) || matcher.match("/api/catalog/products/*/image",path) || path.startsWith("/api/seo/") || path.equals("/api/site-pages") || matcher.match("/api/site-pages/*",path))) {
             chain.doFilter(request,response); return;
         }
         if ("POST".equals(request.getMethod()) && (path.equals("/api/payments/mock/callback") || path.equals("/api/preorder-payments/mock/callback") || path.equals("/api/payments/ecpay/callback"))) { chain.doFilter(request,response); return; }
@@ -61,7 +61,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 || Set.of("/api/admin/register","/api/admin/stopAccount","/api/admin/user/update").contains(path)) {
             error(response,410,"舊存取管理寫入已停用，請使用新版管理 API"); return;
         }
-        boolean authorized = ("/api/auth/me".equals(path) && "GET".equals(request.getMethod())) || user.getPermissions().stream().anyMatch(p ->
+        // 備援碼保存確認未完成（系統管理員／店長）：只允許查看自身狀態、重新產生與確認，其餘業務 API 一律拒絕
+        if (Boolean.TRUE.equals(user.getMfaBackupAckPending()) && !(("/api/auth/me".equals(path) && "GET".equals(request.getMethod()))
+                || ("/api/admin/mfa".equals(path) && "GET".equals(request.getMethod()))
+                || (("/api/admin/mfa/backup-codes".equals(path) || "/api/admin/mfa/backup-codes/ack".equals(path)) && "POST".equals(request.getMethod())))) {
+            response.setStatus(403); response.setContentType("application/json"); response.setCharacterEncoding("UTF-8");
+            response.getWriter().write("{\"code\":1,\"errorCode\":\"MFA_BACKUP_ACK_REQUIRED\",\"message\":\"請先下載並確認保存雙因素備援碼\",\"data\":null}");
+            return;
+        }
+        // 雙因素自助設定：任何已登入員工都可管理自己的 MFA，不需額外權限
+        boolean self = path.equals("/api/admin/mfa") || matcher.match("/api/admin/mfa/*", path) || path.equals("/api/admin/mfa/backup-codes/ack");
+        boolean authorized = self || ("/api/auth/me".equals(path) && "GET".equals(request.getMethod())) || user.getPermissions().stream().anyMatch(p ->
                 p.getUrl() != null && p.getMethod() != null && matcher.match(p.getUrl(), path) && p.getMethod().equalsIgnoreCase(request.getMethod()));
         if (!authorized) { error(response, 403, "無使用權限"); return; }
         var authorities = user.getPermissions().stream().map(p -> new SimpleGrantedAuthority(p.getName())).distinct().toList();
@@ -94,7 +104,26 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     || (matcher.match("/api/customer/mock-payments/*/simulate",path)&&method.equals("POST"))
                     || (matcher.match("/api/customer/orders/*/ecpay-payments",path)&&method.equals("POST"))
                     || (path.equals("/api/customer/addresses")&&method.equals("GET"))
-                    || (matcher.match("/api/customer/addresses/*",path)&&(method.equals("PUT")||method.equals("DELETE")));
+                    || (matcher.match("/api/customer/addresses/*",path)&&(method.equals("PUT")||method.equals("DELETE")))
+                    // Commerce V2 Phase 3：收藏、商品提醒、通知偏好、站內通知
+                    || (path.equals("/api/customer/favorites")&&method.equals("GET"))
+                    || (path.equals("/api/customer/favorites/ids")&&method.equals("GET"))
+                    || (path.equals("/api/customer/favorites/merge")&&method.equals("POST"))
+                    || (matcher.match("/api/customer/favorites/*",path)&&!path.endsWith("/merge")&&!path.endsWith("/ids")&&(method.equals("PUT")||method.equals("DELETE")))
+                    || (path.equals("/api/customer/product-alerts")&&method.equals("GET"))
+                    || (matcher.match("/api/customer/product-alerts/*",path)&&method.equals("PUT"))
+                    || (path.equals("/api/customer/notification-preferences")&&(method.equals("GET")||method.equals("PUT")))
+                    || (path.equals("/api/customer/notifications")&&method.equals("GET"))
+                    || (path.equals("/api/customer/notifications/read")&&method.equals("POST"))
+                    // Commerce V2 Phase 5：出貨單合併與私人倉庫
+                    || (path.equals("/api/customer/shipments")&&method.equals("GET"))
+                    || (path.equals("/api/customer/shipments/merge")&&method.equals("POST"))
+                    || ((matcher.match("/api/customer/shipments/*/hold",path)||matcher.match("/api/customer/shipments/*/release",path))&&method.equals("POST"))
+                    // Commerce V2 Phase 6：客服單與物流追蹤
+                    || (matcher.match("/api/customer/shipments/*/tracking",path)&&method.equals("GET"))
+                    || (path.equals("/api/customer/support-tickets")&&(method.equals("GET")||method.equals("POST")))
+                    || (matcher.match("/api/customer/support-tickets/*",path)&&method.equals("GET"))
+                    || (matcher.match("/api/customer/support-tickets/*/messages",path)&&method.equals("POST"));
     }
     private void error(HttpServletResponse response, int status, String message) throws IOException {
         response.setStatus(status); response.setContentType("application/json"); response.setCharacterEncoding("UTF-8");

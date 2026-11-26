@@ -52,7 +52,11 @@ public class CatalogMasterService {
    if(id==null){if(in.expectedVersion()!=0)throw fail(409,"新主檔版本需為0");id=UUID.randomUUID().toString();}
    else{before=find(kind,id);if(before.version()!=in.expectedVersion())throw fail(409,"主檔版本已變更，請先重讀");if(!in.enabled()&&db.queryForObject("SELECT COUNT(*) FROM catalog_product WHERE status='PUBLISHED' AND "+COLUMNS.get(kind)+"=?",Long.class,id)>0)throw fail(409,"上架商品仍引用此主檔，請先下架或更換");}
    try{if(before==null)db.update("INSERT INTO "+t+"(id,name,description,enabled) VALUES(?,?,?,?)",id,name,description,in.enabled());else db.update("UPDATE "+t+" SET name=?,description=?,enabled=?,version=version+1,updated_at=CURRENT_TIMESTAMP(6) WHERE id=?",name,description,in.enabled(),id);}catch(DuplicateKeyException e){throw fail(409,"同類型主檔名稱已存在");}
-   var after=find(kind,id);db.update("INSERT INTO catalog_master_event(request_id,actor_id,actor_username,kind,action,target_id,fingerprint,before_state,after_state,note) VALUES(?,?,?,?,?,?,?,?,?,?)",in.requestId(),actor.getId(),username,kind,action,id,fingerprint,before==null?null:encode(before),encode(after),note);
+   var after=find(kind,id);
+   // 品牌／作品改名：同交易重建受影響商品的伺服器搜尋文字（與 CatalogService.searchText 相同組成；不改商品版本）
+   if(before!=null&&!before.name().equals(after.name())&&Set.of("BRAND","WORK").contains(kind))
+    db.update("UPDATE catalog_product p SET p.search_text=LEFT(CONCAT_WS(' ',p.title,p.character_name,(SELECT w.name FROM catalog_work w WHERE w.id=p.work_id),(SELECT b.name FROM catalog_brand b WHERE b.id=p.brand_id),p.manufacturer),1000) WHERE p."+(kind.equals("BRAND")?"brand_id":"work_id")+"=?",id);
+   db.update("INSERT INTO catalog_master_event(request_id,actor_id,actor_username,kind,action,target_id,fingerprint,before_state,after_state,note) VALUES(?,?,?,?,?,?,?,?,?,?)",in.requestId(),actor.getId(),username,kind,action,id,fingerprint,before==null?null:encode(before),encode(after),note);
    return new Applied(db.queryForObject("SELECT * FROM catalog_master_event WHERE request_id=?",events,in.requestId()),after,false);
  }
  private ResponseStatusException fail(int status,String message){return new ResponseStatusException(HttpStatus.valueOf(status),message);}

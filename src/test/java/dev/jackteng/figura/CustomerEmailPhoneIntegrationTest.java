@@ -183,8 +183,8 @@ class CustomerEmailPhoneIntegrationTest {
         var customer = login(email, PASSWORD);
         assertEquals(401, call(customer, "GET", "/admin/notifications/mock-emails", null).getResponse().getStatus());
         var staff = guest();
-        var login = mvc.perform(path(post("/figura/api/admin/login"), "/admin/login").cookie(staff.cookies().toArray(Cookie[]::new)).header("X-XSRF-TOKEN", staff.csrf())
-                .param("username", "shop_admin").param("password", System.getenv("DEMO_ADMIN_PASSWORD")).param("deviceId", UUID.randomUUID().toString())).andReturn();
+        var login = StaffLogin.complete(mvc, () -> mvc.perform(path(post("/figura/api/admin/login"), "/admin/login").cookie(staff.cookies().toArray(Cookie[]::new)).header("X-XSRF-TOKEN", staff.csrf())
+                .param("username", "shop_admin").param("password", System.getenv("DEMO_ADMIN_PASSWORD")).param("deviceId", UUID.randomUUID().toString())).andReturn());
         assertEquals(200, login.getResponse().getStatus());
         var admin = new Client(staff.csrf(), List.of(staff.cookies().get(0), cookie(login, "accessToken"), cookie(login, "refreshToken")));
         var list = call(admin, "GET", "/admin/notifications/mock-emails", null);

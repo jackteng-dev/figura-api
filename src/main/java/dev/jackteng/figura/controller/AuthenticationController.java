@@ -21,7 +21,12 @@ public class AuthenticationController {
     @GetMapping("/auth/csrf")
     public Result<Map<String, String>> csrf(CsrfToken token) { return Result.success(Map.of("token", token.getToken())); }
     @GetMapping("/auth/me")
-    public Result<User> current(@AuthenticationPrincipal CustomUserDetails current) { return Result.success(users.findAllByUserName(current.getUsername())); }
+    public Result<User> current(@AuthenticationPrincipal CustomUserDetails current) {
+        var user = users.findAllByUserName(current.getUsername());
+        if (user != null) user.setMfaBackupAckPending(mfa.ackPending(current.getId()));   // 前端據此導向備援碼保存確認
+        return Result.success(user);
+    }
+    @org.springframework.beans.factory.annotation.Autowired private dev.jackteng.figura.service.StaffMfaService mfa;
     @PostMapping("/auth/refresh")
     public Result<Void> refresh(HttpServletRequest request, HttpServletResponse response) {
         sessions.refresh(JwtUtil.extractCookieToken(request, "refreshToken"), response); return Result.success();

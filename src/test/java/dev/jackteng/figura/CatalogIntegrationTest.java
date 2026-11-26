@@ -39,7 +39,7 @@ class CatalogIntegrationTest {
     private Client guest() throws Exception{var r=call(null,"GET","/auth/csrf",null);return new Client(data(r).path("token").asText(),List.of(cookie(r,"XSRF-TOKEN")));}
     private Client staff(boolean admin) throws Exception{
         var c=guest();String device=UUID.randomUUID().toString(),name=admin?"shop_admin":"shop_staff";
-        var r=mvc.perform(post("/figura/api/admin/login").contextPath("/figura").servletPath("/api/admin/login").cookie(c.cookies().toArray(Cookie[]::new)).header("X-XSRF-TOKEN",c.csrf()).param("username",name).param("password",System.getenv(admin?"DEMO_ADMIN_PASSWORD":"DEMO_STAFF_PASSWORD")).param("deviceId",device)).andReturn();assertEquals(200,r.getResponse().getStatus());
+        var r=StaffLogin.complete(mvc, () -> mvc.perform(post("/figura/api/admin/login").contextPath("/figura").servletPath("/api/admin/login").cookie(c.cookies().toArray(Cookie[]::new)).header("X-XSRF-TOKEN",c.csrf()).param("username",name).param("password",System.getenv(admin?"DEMO_ADMIN_PASSWORD":"DEMO_STAFF_PASSWORD")).param("deviceId",device)).andReturn());assertEquals(200,r.getResponse().getStatus());
         sessionKeys.add("shop:session:"+data(r).path("id").asInt()+":"+device);
         return new Client(c.csrf(),List.of(c.cookies().get(0),cookie(r,"accessToken"),cookie(r,"refreshToken")));
     }
@@ -57,7 +57,7 @@ class CatalogIntegrationTest {
         assertFalse(data(call(null,"GET","/catalog/products",null)).path("items").toString().contains(id));
         var published=publish(admin,p,true);assertEquals(200,published.getResponse().getStatus());p=data(published);
         var publicData=data(call(null,"GET","/catalog/products/"+id,null));
-        assertEquals(Set.of("id","title","brand","category","description","skus","image","work"),json.convertValue(publicData,Map.class).keySet());
+        assertEquals(Set.of("id","title","brand","category","description","skus","image","work","specs","contentOrigin","availability","minPriceTwd","preorder","updatedAt"),json.convertValue(publicData,Map.class).keySet());
         assertEquals(1,publicData.path("skus").size());assertEquals(1280,publicData.path("skus").get(0).path("priceTwd").asInt());
         assertEquals(Set.of("id","label","priceTwd","available"),json.convertValue(publicData.path("skus").get(0),Map.class).keySet());
         assertTrue(data(call(null,"GET","/catalog/products",null)).path("items").toString().contains(id));

@@ -55,7 +55,7 @@ class NotificationIntegrationTest {
         return new Client(c.csrf(),List.of(c.cookies().get(0),cookie(r,"customerAccessToken"),cookie(r,"customerRefreshToken")),id);
     }
     private Client admin() throws Exception{
-        var c=guest();String device=UUID.randomUUID().toString();var r=mvc.perform(post("/figura/api/admin/login").contextPath("/figura").servletPath("/api/admin/login").cookie(c.cookies().toArray(Cookie[]::new)).header("X-XSRF-TOKEN",c.csrf()).param("username","shop_admin").param("password",System.getenv("DEMO_ADMIN_PASSWORD")).param("deviceId",device)).andReturn();assertEquals(200,r.getResponse().getStatus());String id=data(r).path("id").asText();sessions.add("shop:session:"+id+":"+device);
+        var c=guest();String device=UUID.randomUUID().toString();var r=StaffLogin.complete(mvc, () -> mvc.perform(post("/figura/api/admin/login").contextPath("/figura").servletPath("/api/admin/login").cookie(c.cookies().toArray(Cookie[]::new)).header("X-XSRF-TOKEN",c.csrf()).param("username","shop_admin").param("password",System.getenv("DEMO_ADMIN_PASSWORD")).param("deviceId",device)).andReturn());assertEquals(200,r.getResponse().getStatus());String id=data(r).path("id").asText();sessions.add("shop:session:"+id+":"+device);
         return new Client(c.csrf(),List.of(c.cookies().get(0),cookie(r,"accessToken"),cookie(r,"refreshToken")),id);
     }
     private Fixture fixture(Client admin,int stock) throws Exception{
@@ -110,7 +110,7 @@ class NotificationIntegrationTest {
     private Client employee(boolean manager) throws Exception{
         var c=guest();String username="fulfill_"+UUID.randomUUID().toString().replace("-","").substring(0,18),password="synthetic-fulfillment-only-password",device=UUID.randomUUID().toString();
         jdbc.update("INSERT INTO user(username,password,is_stop) VALUES(?,?,'F')",username,new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder().encode(password));int id=jdbc.queryForObject("SELECT id FROM user WHERE username=?",Integer.class,username);actors.add(id);jdbc.update("INSERT INTO user_role(user_id,role_id) VALUES(?,?)",id,manager?1:2);
-        var r=mvc.perform(post("/figura/api/admin/login").contextPath("/figura").servletPath("/api/admin/login").cookie(c.cookies().toArray(Cookie[]::new)).header("X-XSRF-TOKEN",c.csrf()).param("username",username).param("password",password).param("deviceId",device)).andReturn();assertEquals(200,r.getResponse().getStatus());sessions.add("shop:session:"+id+":"+device);return new Client(c.csrf(),List.of(c.cookies().get(0),cookie(r,"accessToken"),cookie(r,"refreshToken")),Integer.toString(id));
+        var r=StaffLogin.complete(mvc, () -> mvc.perform(post("/figura/api/admin/login").contextPath("/figura").servletPath("/api/admin/login").cookie(c.cookies().toArray(Cookie[]::new)).header("X-XSRF-TOKEN",c.csrf()).param("username",username).param("password",password).param("deviceId",device)).andReturn());assertEquals(200,r.getResponse().getStatus());sessions.add("shop:session:"+id+":"+device);return new Client(c.csrf(),List.of(c.cookies().get(0),cookie(r,"accessToken"),cookie(r,"refreshToken")),Integer.toString(id));
     }
     private Map<String,Object> application(JsonNode o){return new HashMap<>(Map.of("requestId",UUID.randomUUID().toString(),"expectedOrderVersion",o.path("version").asInt(),"reason","合成整筆退貨原因"));}
     private MvcResult requestReturn(Client c,JsonNode o,Map<String,Object> input) throws Exception{return call(c,"POST","/customer/orders/"+o.path("id").asText()+"/mock-return",input);}

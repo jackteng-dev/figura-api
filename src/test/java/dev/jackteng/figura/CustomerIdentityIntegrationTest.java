@@ -96,7 +96,7 @@ class CustomerIdentityIntegrationTest {
     }
     @Test void cookieAndRealmIsolationPreserveOtherAudienceLogout() throws Exception {
         String name=username();register(guest(),name);var customer=login(name);var staff=guest();
-        var login=mvc.perform(path(post("/figura/api/admin/login"),"/admin/login").cookie(staff.cookies().toArray(Cookie[]::new)).header("X-XSRF-TOKEN",staff.csrf()).param("username","shop_admin").param("password",System.getenv("DEMO_ADMIN_PASSWORD")).param("deviceId",UUID.randomUUID().toString())).andReturn();assertEquals(200,login.getResponse().getStatus());
+        var login=StaffLogin.complete(mvc, () -> mvc.perform(path(post("/figura/api/admin/login"),"/admin/login").cookie(staff.cookies().toArray(Cookie[]::new)).header("X-XSRF-TOKEN",staff.csrf()).param("username","shop_admin").param("password",System.getenv("DEMO_ADMIN_PASSWORD")).param("deviceId",UUID.randomUUID().toString())).andReturn());assertEquals(200,login.getResponse().getStatus());
         Cookie staffAccess=cookie(login,"accessToken"),staffRefresh=cookie(login,"refreshToken");
         var customerAsStaff=new Client(customer.csrf(),List.of(customer.cookies().get(0),new Cookie("accessToken",customer.cookies().get(1).getValue())));
         assertEquals(401,call(customerAsStaff,"GET","/auth/me",null).getResponse().getStatus());

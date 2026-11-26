@@ -49,8 +49,8 @@ public class SecurityConfig {
                     response.setStatus(403); response.setContentType("application/json"); response.setCharacterEncoding("UTF-8");
                     response.getWriter().write("{\"code\":1,\"errorCode\":\"CSRF_INVALID\",\"message\":\"操作驗證失效\"}");
                 }))
-                .authorizeHttpRequests(auth -> auth.requestMatchers(org.springframework.http.HttpMethod.GET,"/api/catalog/preorders","/api/catalog/preorders/*","/api/catalog/products","/api/catalog/products/*","/api/catalog/products/*/image/*","/api/catalog/products/*/image").permitAll()
-                        .requestMatchers("/api/admin/login", "/api/admin/logout", "/api/auth/refresh", "/api/auth/csrf",
+                .authorizeHttpRequests(auth -> auth.requestMatchers(org.springframework.http.HttpMethod.GET,"/api/catalog/preorders","/api/catalog/preorders/*","/api/catalog/products","/api/catalog/facets","/api/catalog/products/*","/api/catalog/products/*/image/*","/api/catalog/products/*/image","/api/seo/head","/api/seo/body","/api/seo/meta","/api/seo/sitemap.xml","/api/seo/robots.txt","/api/seo/guides","/api/seo/guides/*","/api/site-pages","/api/site-pages/*").permitAll()
+                        .requestMatchers("/api/admin/login", "/api/admin/login/mfa", "/api/admin/login/mfa/setup", "/api/admin/login/mfa/enroll", "/api/admin/logout", "/api/auth/refresh", "/api/auth/csrf",
                         "/api/customer/auth/register", "/api/customer/auth/login", "/api/customer/auth/refresh", "/api/customer/auth/logout",
                         "/api/customer/auth/email/verify", "/api/customer/auth/password/forgot", "/api/customer/auth/password/reset").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.POST,"/api/payments/mock/callback","/api/preorder-payments/mock/callback","/api/payments/ecpay/callback").permitAll()

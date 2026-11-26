@@ -1,5 +1,40 @@
 # Figura（原 ELPSY Shop） 後端交接
 
+## 2026-11-25：MFA 備援碼下載與保存確認（V32–V33，併入 PR #18，未合併）
+
+- 綁定與重新產生的回應附帳號與產生時間；Web 在瀏覽器端產生 `Figura-MFA-Recovery-Codes.txt` 下載（不經伺服器、不放 URL、不存 storage），取消「複製全部」。
+- 具 `access.mfa.reset` 的員工（系統管理員／店長）必須下載並勾選確認：伺服器以 `staff_mfa.backup_ack_pending` 擋住業務 API（403 `MFA_BACKUP_ACK_REQUIRED`），直到 `POST /admin/mfa/backup-codes/ack`；其他員工可略過（`BACKUP_SKIP` 稽核）。重新產生需 TOTP（不接受備援碼）、舊碼立即失效，管理員需再次確認。
+- 伺服器只能確認「已觸發下載並勾選」，不能確認檔案確實保存；文件與介面依此表述。
+- Codex 審查找到 3 項並已修正（V33）：確認必須帶目前批次 ID（舊批次 409）；待確認依目前權限即時判斷，員工升權後必須保存；V33 之前沒有批次的舊資料視為未確認。
+- 測試：MFA 整合測試 6 項（管理員確認阻擋、員工略過、重新產生需 TOTP、舊碼失效、舊批次不能確認、升權後要求保存）；全套結果見 PR。`StaffLogin` 測試 helper 會替管理員完成確認。
+
+## 2026-11-25：員工後台強制雙因素（V31，併入 PR #18，未合併）
+
+- **政策**：系統管理員、店長、所有員工都必須綁定 TOTP；顧客不受影響。密碼登入**一律不發 session**：已綁定 → challenge（TOTP 或一次性備援碼）；未綁定 → 綁定 token → `/admin/login/mfa/setup`、`/enroll` 完成後才發 session，並回傳 10 組只顯示一次的備援碼。
+- **防繞過**：JWT 新增 `mfa=TOTP` 標記，`authenticate`／`refresh` 都要求；部署前的舊 session 全部失效。綁定 token 與 challenge 綁定簽發時的 `auth_version`，重設、停用或權限變更後舊流程失效；發 session 前再核對版本與綁定狀態。自行停用 MFA 的端點已移除。
+- **金鑰未設定**：員工登入回 503 並寫 ERROR 日誌，不降級；`/admin/ops/status` 顯示 `mfaAvailable`、`staffActive`、`staffMfaEnrolled`。
+- **復原**：備援碼（HMAC 保存、以 TOTP 重新產生）；管理員重設他人 MFA（權限 `access.mfa.reset`，不可重設自己，撤銷對方 session，稽核 actor／原因，requestId 冪等）；最後一位管理員遺失時的 DB 程序見 `docs/OPS_SECURITY.md`。
+- **防暴力與稽核**：token／challenge 各 5 次、帳號 15 分鐘 10 次（含重新產生備援碼端點），Redis Lua 原子扣次；失敗稽核獨立交易保存。
+- **其他**：不存在的 API 路徑改回 404，不再被記成伺服器錯誤。
+- **測試**：新增 `StaffLogin` 測試 helper，讓所有既有整合測試走真實綁定流程（測試前在隔離 DB 清除該員工 MFA，正式程式無任何略過路徑）；MFA 整合測試 5 項（強制綁定、每個 session 驗證、備援碼一次性、併發與帳號上限、舊 session 失效、重設撤銷 session 與舊 token、顧客不受影響）＋單元測試 3 項（未設定金鑰不降級、缺 MFA 標記拒絕）。全套結果見 PR。Codex 唯讀審查找到 3 項（重設競態、舊 token、備援碼端點猜碼）已修正並加測試。
+- **部署注意**：部署前必設 `MFA_ENCRYPTION_KEY` 並離線保存；部署後所有員工需重新登入並綁定，先讓兩位管理員完成綁定。首次登入綁定的風險（密碼外洩者可能搶先綁定）已寫入文件，部署後應儘快完成全員綁定。
+
+## 2026-11-25：Commerce V2 Phase 1–7（V25–V30，未合併，需受控切換）
+
+分支 `feat/commerce-v2-specs`（Web／App 同名）。計畫、完成狀態與待啟用清單：`docs/COMMERCE_V2_PLAN.md` §6–7。契約：`CATALOG_SEARCH_API`、`ENGAGEMENT_API`、`WAREHOUSE_API`、`SUPPORT_API`、`OPS_SECURITY`，Web `docs/SEO_DEPLOYMENT.md`。**V25–V30 位於受保護路徑，需作者受控切換；不 merge、不部署、未碰正式 DB。** V1–V24 bytes 不變。
+
+- **P1 規格（V25）／P2 搜尋（V26）**：規格欄位與白名單；既有 99 款不填規格；AI 概念材質公開不出現在 materials。ngram 搜尋、facets、排序白名單（含 STOCK_FIRST）；可下單批次規則（開放、未截止、有配額、款式啟用）由搜尋、商品摘要、提醒掃描共用；主檔改名同交易重建 search_text。
+- **P3（V27）**：收藏（含訪客合併）、商品提醒（`ProductAlertScanner` 狀態轉換才通知、首次只建基準、source_id 防重）、通知偏好、站內通知匣（outbox 增 product parent 與 read_at）；`EmailSender`＋`MockEmailSender`。
+- **P4 SEO**：`/api/seo/head|body|meta|sitemap.xml|robots.txt|guides`、`GuideCatalog`（只寫系統實際規則與一般知識）；無評價、offers 預設關閉、AI 概念商品不輸出 Product；已發布政策頁才索引。
+- **P5（V28）**：出貨單合併（只搬 shipment_item，運費只減不增，差額 `shipping_adjustment` 待審）、私人倉庫暫存（暫存中不可出貨，單筆端點也擋）、到期提醒、員工解除／延長、運費調整審核（CREDIT_MOCK 只改狀態）。
+- **P6（V29）**：政策頁草稿→送審→**發布者不可是最後編輯者**；8 個空白草稿，未發布公開端點不回草稿（標題用固定名稱）。客服單（內部備註不外露、關聯訂單須本人）、測試物流追蹤與到店／異常通知、`CarrierAdapter` 接入點。
+- **P7（V30）**：員工 TOTP（自願、AES-GCM 加密、challenge 原子扣次數與一次性消耗、帳號層級節流、失敗稽核）、銷售報表（模擬／綠界測試／真實分開，真實營收 0）、低庫存、營運狀態、未處理例外錯誤代碼與 ERROR 日誌（原本 500 不記錄）。
+- **測試**：新增 ProductSpecs 4、CatalogSearch 2、Engagement 3、Seo 2、Warehouse 2、Support 3、Ops 2。全套 **342 項：0 failures、2 errors（`StaffAccessIntegrationTest`，本機 DB 角色數既有問題）**。本機測試環境需 `MOCK_NOTIFICATIONS_ENABLED=true` ，否則通知測試 404。測試連線池上限（每個快取 context 4 條）與 MFA 測試金鑰放在 `src/test/resources/application.properties`；CI 曾因多個 context 耗盡 MySQL 連線而失敗，已修正，GitHub `verify` 通過。測試 DB 先前失敗殘留的 34 筆 1990 年 outbox 合成資料已延後到 2099，才讓 worker 測試通過。
+- **Codex 唯讀審查**：P1–2 六項、P3–7 六項（MFA 併發繞過 P1、MFA setup 競態、提醒與客服回覆死鎖、草稿標題外洩、失敗稽核回滾）全部修正並加測試；覆審再指出帳號層級節流可被併發繞過，已改為 Redis 原子先保留額度再核對並加測試。
+- **本機 demo**：DB 已到 V30，API 以新 jar 執行於 19092；經 Web 代理驗證收藏／提醒／通知、報表（真實營收 0）、低庫存、營運狀態、政策頁未發布、員工登入（未啟用 MFA）不變。本機未設 `MFA_ENCRYPTION_KEY`，MFA 顯示不可用屬預期。
+- **未完成／限制**：正式金流、Email、物流 API、Search Console、nginx SSI（部署契約）、政策內容、倉庫與運費政策、備份排程皆列待啟用；新後台頁未以員工帳號在瀏覽器實際點過；App 未做真機；`StaffAccessIntegrationTest` 2 項為本機 DB 角色數既有問題。
+- **下一步**：作者審核 PR → 隔離環境演練 V25–V30 → 受控切換 → 合併 API，再合併 Web／App；審核 gateway SSI。
+
 ## 2026-11-19：商品多圖與 V24（未合併／受控切換前不可 merge）
 
 分支 `codex/product-gallery`，基於遠端 main `6121c3a`；配對 Web `codex/comfyui-product-gallery`。**V24 位於 CD 受保護路徑 `src/main/resources/`，需要作者在伺服器執行受控 schema／contract switch；本輪不 merge、不部署、不操作正式 DB。** V1–V23 bytes 不變。

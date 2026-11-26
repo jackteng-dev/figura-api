@@ -29,4 +29,18 @@ public class User {
     private String isStop;
     private List<Role> role;
     private List<Permission> permissions;
+    /** 雙因素：密碼正確但尚未驗證時為 true，並回傳 challenge（此時不發 session）。 */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) private Boolean mfaRequired;
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) private String mfaChallenge;
+    /** 強制雙因素：尚未綁定的員工密碼正確後回傳綁定 token，完成綁定才發 session。 */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) private Boolean mfaSetupRequired;
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) private String mfaSetupToken;
+    /** 只在完成綁定的那一次回傳的一次性備援碼。 */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) private java.util.List<String> backupCodes;
+    /** 此員工是否必須保存備援碼（具 access.mfa.reset）；與 backupCodes 同次回傳。 */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) private Boolean backupCodesRequired;
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) private java.time.OffsetDateTime backupCodesGeneratedAt;
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) private String backupBatchId;
+    /** 尚未完成備援碼保存確認：業務 API 會回 403（MFA_BACKUP_ACK_REQUIRED）。 */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) private Boolean mfaBackupAckPending;
 }
