@@ -66,6 +66,28 @@ class SandboxDisabledIntegrationTest extends ShopIntegrationSupport {
         } finally { redis.delete("shop:session:" + id + ":" + device); }
     }
 
+    @Autowired org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder encoder;
+    @Autowired dev.jackteng.figura.service.SandboxDemoService demo;
+    @Test void leftoverDemoAccountsAreBlockedWhenSandboxIsOff() throws Exception {
+        // 沙盒關閉後（同一 DB 重啟為正式設定），先前建立且尚未到期的臨時帳號也不能登入，不會變成一般員工
+        String name = "mfa-demo-" + uuid().substring(0, 8), pw = "leftover-demo-password-2026";
+        jdbc.update("INSERT INTO user(username,password,first_name,last_name,role,is_stop,created_time,modified_time) VALUES(?,?,'MFA 展示','','S','F',NOW(),NOW())", name, encoder.encode(pw));
+        int uid = jdbc.queryForObject("SELECT id FROM user WHERE username=?", Integer.class, name);
+        jdbc.update("INSERT INTO user_role(user_id,role_id) VALUES(?,2)", uid);
+        jdbc.update("INSERT INTO sandbox_demo_account(user_id,expires_at) VALUES(?,CURRENT_TIMESTAMP(6)+INTERVAL 30 MINUTE)", uid);
+        try {
+            var g = guest();
+            var login = mvc.perform(post("/figura/api/admin/login").contextPath("/figura").servletPath("/api/admin/login").cookie(g.cookies().toArray(Cookie[]::new)).header("X-XSRF-TOKEN", g.csrf())
+                    .param("username", name).param("password", pw).param("deviceId", uuid())).andReturn();
+            assertEquals(401, login.getResponse().getStatus(), text(login)); assertFalse(session(login));
+        } finally {
+            jdbc.update("UPDATE user SET is_stop='T' WHERE id=?", uid);
+            jdbc.update("UPDATE sandbox_demo_account SET expires_at=CURRENT_TIMESTAMP(6)-INTERVAL 1 SECOND WHERE user_id=?", uid);
+        }
+        assertTrue(demo.cleanupExpired() >= 1, "正式設定下清理仍會處理遺留的臨時帳號");
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM sandbox_demo_account WHERE user_id=?", Integer.class, uid));
+    }
+
     @Test void staffAccountKindIsStaff() throws Exception {
         var admin = admin();
         assertEquals("STAFF", data(ok(admin, "GET", "/auth/me", null, 200)).path("accountKind").asText());

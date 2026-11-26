@@ -203,6 +203,24 @@ class SandboxIntegrationTest extends ShopIntegrationSupport {
         assertNotNull(a);
     }
 
+    @Test void referencedDemoAccountIsTombstonedInsteadOfBlockingCleanup() throws Exception {
+        var created = createDemo();
+        String username = created.path("username").asText(), pw = created.path("password").asText();
+        int uid = id(username);
+        // 其他資料以外鍵參照臨時帳號（模擬客服指派等業務參照）：清理不能卡住，也不能刪掉參照它的歷史
+        String ref = uuid();
+        jdbc.update("INSERT INTO staff_mfa_event(id,user_id,action,actor_id,note) VALUES(?,?,'RESET',?,?)", ref, id(SHARED), uid, "測試：外鍵參照臨時帳號");
+        jdbc.update("UPDATE sandbox_demo_account SET expires_at=CURRENT_TIMESTAMP(6)-INTERVAL 1 SECOND WHERE user_id=?", uid);
+        assertEquals(1, demo.cleanupExpired());
+        assertEquals("T", jdbc.queryForObject("SELECT is_stop FROM user WHERE id=?", String.class, uid), "保留為停用墓碑");
+        assertFalse(encoder.matches(pw, jdbc.queryForObject("SELECT password FROM user WHERE id=?", String.class, uid)), "原密碼失效");
+        for (String table : List.of("staff_mfa", "staff_mfa_backup_code", "user_role", "sandbox_demo_account"))
+            assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM " + table + " WHERE user_id=?", Integer.class, uid), table);
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM staff_mfa_event WHERE id=?", Integer.class, ref), "參照它的歷史保留");
+        assertEquals(401, password(guest(), username, pw).getResponse().getStatus());
+        assertEquals(0, demo.cleanupExpired(), "下次排程不再卡在同一筆");
+    }
+
     @Test void demoRoleHasOnlyReadOnlyPermissions() throws Exception {
         createDemo();
         var codes = jdbc.queryForList("SELECT p.code FROM role r JOIN role_permission rp ON rp.role_id=r.id JOIN permissions_backend p ON p.id=rp.permission_id WHERE r.name=? ORDER BY p.code", String.class, SandboxDemoService.ROLE_NAME);

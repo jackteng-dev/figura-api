@@ -15,7 +15,11 @@
   - `StaffMfaService`（拒絕共用帳號；展示帳號強制保存備援碼）。
   - `JwtAuthenticationFilter`（共用帳號、展示帳號的寫入限制）。
   - `V34__sandbox_mfa_demo_accounts.sql`（只新增空表）。
-- **測試**：`SandboxModeTest`（6）、`SandboxIntegrationTest`（6，沙盒設定）、`SandboxDisabledIntegrationTest`（4，正式設定）；全套結果見 PR。
+- **測試**：`SandboxModeTest`（6）、`SandboxIntegrationTest`（7，沙盒設定）、`SandboxDisabledIntegrationTest`（5，正式設定）。
+  - 本機全套 365 項：只有 2 項 `StaffAccessIntegrationTest` 錯誤，是既有的本機環境問題，與先前相同；其餘全過。
+- **Codex 唯讀審查**找到 2 項 P2，都已修正並加測試：
+  - 關閉沙盒後，既有臨時帳號不再受到期限制 → 生命週期改為與設定無關，關閉後一律拒絕。
+  - 外鍵參照（客服指派）讓清理永久失敗 → 改為停用墓碑。
 - **未完成**：spec 2.4 不需登入的沙盒初始化入口（`--sandbox.seed.dir`）與第 3 節資源格式 → 下一個 PR。過渡期伺服器 HTTP seed 改用共用帳號登入。
 - **部署**：
   - V34 位於受保護路徑（`src/main/resources`），需受控切換；它只新增一張空表，正式環境不寫入。

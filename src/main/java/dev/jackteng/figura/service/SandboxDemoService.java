@@ -106,21 +106,28 @@ public class SandboxDemoService {
         return out;
     }
 
-    /** 是否為 MFA 展示臨時帳號（只在沙盒模式查詢；正式環境不查 DB）。 */
+    /**
+     * 是否為 MFA 展示臨時帳號。生命週期限制「不」依賴目前的沙盒設定：即使之後關閉沙盒模式，
+     * 已建立的臨時帳號仍是臨時帳號（見 {@link #blocked}），不會變成一般員工。
+     */
     public boolean isDemoAccount(int user) {
-        return mode.enabled() && db.queryForObject("SELECT COUNT(*) FROM sandbox_demo_account WHERE user_id=?", Integer.class, user) > 0;
+        return db.queryForObject("SELECT COUNT(*) FROM sandbox_demo_account WHERE user_id=?", Integer.class, user) > 0;
     }
-    /** 臨時帳號到期時間；非臨時帳號或非沙盒模式為 empty。 */
+    /** 臨時帳號到期時間；非臨時帳號為 empty。 */
     public Optional<OffsetDateTime> expiresAt(int user) {
-        if (!mode.enabled()) return Optional.empty();
         var rows = db.queryForList("SELECT expires_at FROM sandbox_demo_account WHERE user_id=?", LocalDateTime.class, user);
         return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0).atOffset(ZoneOffset.ofHours(8)));
     }
-    /** 已到期的臨時帳號：拒絕登入與既有 session（以 DB 時間判斷）。 */
-    public boolean expired(int user) {
-        if (!mode.enabled()) return false;
-        Integer n = db.queryForObject("SELECT COUNT(*) FROM sandbox_demo_account WHERE user_id=? AND expires_at<=CURRENT_TIMESTAMP(6)", Integer.class, user);
-        return n != null && n > 0;
+    /**
+     * 臨時帳號不能使用：已到期（以 DB 時間判斷），或目前沒有開啟 MFA 展示模式（關閉沙盒後既有臨時帳號全部失效）。
+     * 拒絕密碼登入、MFA 完成、既有 session 與 refresh。非臨時帳號一律 false。
+     */
+    public boolean blocked(int user) {
+        var rows = db.queryForList("SELECT expires_at<=CURRENT_TIMESTAMP(6) AS expired FROM sandbox_demo_account WHERE user_id=?", user);
+        if (rows.isEmpty()) return false;
+        Object e = rows.get(0).get("expired");
+        boolean expired = e instanceof Boolean b ? b : e instanceof Number n && n.intValue() != 0;
+        return expired || !mode.demoEnabled();
     }
     public long activeCount() {
         if (!mode.enabled()) return 0;
@@ -129,16 +136,15 @@ public class SandboxDemoService {
     }
     public SandboxMode.AccountKind kind(int user, String username) {
         if (mode.isExempt(username)) return SandboxMode.AccountKind.SANDBOX_SHARED;
-        if (isDemoAccount(user)) return SandboxMode.AccountKind.SANDBOX_MFA_DEMO;
+        if (isDemoAccount(user)) return SandboxMode.AccountKind.SANDBOX_MFA_DEMO;   // 與沙盒設定無關
         return SandboxMode.AccountKind.STAFF;
     }
 
-    /** 每 5 分鐘清理到期臨時帳號（只在沙盒模式）。每個帳號一筆短交易。 */
+    /** 每 5 分鐘清理到期臨時帳號（與沙盒設定無關；正式環境這張表是空的）。每個帳號一筆短交易。 */
     @Scheduled(fixedDelayString = "${shop.sandbox.cleanup-delay-ms:300000}", initialDelayString = "${shop.sandbox.cleanup-delay-ms:300000}")
-    public void scheduledCleanup() { if (mode.enabled()) cleanupExpired(); }
+    public void scheduledCleanup() { cleanupExpired(); }
 
     public int cleanupExpired() {
-        if (!mode.enabled()) return 0;
         int removed = 0;
         for (Integer id : db.queryForList("SELECT user_id FROM sandbox_demo_account WHERE expires_at<=CURRENT_TIMESTAMP(6) ORDER BY user_id LIMIT 200", Integer.class)) {
             try {
@@ -156,11 +162,32 @@ public class SandboxDemoService {
                     return true;
                 });
                 if (Boolean.TRUE.equals(done)) { purgeRedis(id); removed++; }
+            } catch (org.springframework.dao.DataIntegrityViolationException e) {
+                // 帳號被其他業務資料參照（例如客服單指派）：保留 user 列作為停用墓碑，不刪業務或稽核歷史；
+                // 清除憑證、MFA、角色與 session，並移除臨時帳號紀錄，避免每次排程卡在同一筆
+                try { if (Boolean.TRUE.equals(tombstone(id))) { purgeRedis(id); removed++; } }
+                catch (RuntimeException t) { log.warn("停用到期 MFA 展示帳號 {} 失敗，下次重試：{}", id, t.getMessage()); }
             } catch (RuntimeException e) {
                 log.warn("清理到期 MFA 展示帳號 {} 失敗，下次重試：{}", id, e.getMessage());
             }
         }
         return removed;
+    }
+    private Boolean tombstone(int id) {
+        String unusable = passwords.encode(randomText(PASSWORD_ALPHABET, 32));   // 沒有人知道的密碼
+        return tx.execute(st -> {
+            db.queryForObject("SELECT id FROM staff_access_guard WHERE id=1 FOR UPDATE", Integer.class);
+            if (db.queryForList("SELECT id FROM user WHERE id=? FOR UPDATE", Integer.class, id).isEmpty()) return false;
+            if (db.queryForObject("SELECT COUNT(*) FROM sandbox_demo_account WHERE user_id=? AND expires_at<=CURRENT_TIMESTAMP(6)", Integer.class, id) == 0) return false;
+            db.queryForList("SELECT user_id FROM staff_mfa WHERE user_id=? FOR UPDATE", Integer.class, id);
+            db.update("DELETE FROM staff_mfa_backup_code WHERE user_id=?", id);
+            db.update("DELETE FROM staff_mfa WHERE user_id=?", id);
+            db.update("DELETE FROM staff_mfa_event WHERE user_id=?", id);
+            db.update("DELETE FROM user_role WHERE user_id=?", id);
+            db.update("DELETE FROM sandbox_demo_account WHERE user_id=?", id);
+            db.update("UPDATE user SET is_stop='T',password=?,auth_version=auth_version+1,modified_time=NOW() WHERE id=?", unusable, id);
+            return true;
+        });
     }
     private void purgeRedis(int id) {
         var keys = redis.keys("shop:session:" + id + ":*");

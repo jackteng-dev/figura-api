@@ -57,8 +57,8 @@ public class AdminSessionService {
                 if (!user.getUsername().equals(username)) throw unauthorized();
                 return withKind(issue(user, device, remember, response, MFA_SANDBOX_SHARED));
             }
-            if (demo != null && demo.expired(user.getId())) throw unauthorized();   // 到期的 MFA 展示帳號
         }
+        if (demo != null && demo.blocked(user.getId())) throw unauthorized();   // 到期或沙盒已關閉的 MFA 展示帳號
         // 強制雙因素：密碼正確只拿到 challenge（已綁定）或綁定 token（未綁定），都不是 session。金鑰未設定時拒絕，不降級。
         if (mfa == null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "後台雙因素驗證尚未設定，暫停員工登入，請聯絡系統管理者");
         mfa.requireAvailable();
@@ -84,7 +84,7 @@ public class AdminSessionService {
         User user = users.findByUserName(p.username());
         // 驗證通過後才發 session：若期間被重設、停用或權限變更（auth_version 改變），拒絕把舊驗證結果套用到新版本
         if (user == null || user.getId() != p.user() || !"F".equals(user.getIsStop()) || user.getAuthVersion() != p.authVersion() || !mfa.enabled(user.getId())) throw unauthorized();
-        if (shared(user.getUsername()) || (sandboxOn() && demo != null && demo.expired(user.getId()))) throw unauthorized();
+        if (shared(user.getUsername()) || (demo != null && demo.blocked(user.getId()))) throw unauthorized();
         user.setPermissions(permissions(user.getId()));
         if (user.getPermissions().isEmpty()) throw unauthorized();
         return user;
@@ -120,7 +120,7 @@ public class AdminSessionService {
     }
     /** 帳號類型（STAFF／SANDBOX_SHARED／SANDBOX_MFA_DEMO）只供前端顯示；後端授權不依賴這個欄位。 */
     public User withKind(User user) {
-        if (!sandboxOn() || demo == null) { user.setAccountKind(dev.jackteng.figura.config.SandboxMode.AccountKind.STAFF.name()); return user; }
+        if (demo == null) { user.setAccountKind(dev.jackteng.figura.config.SandboxMode.AccountKind.STAFF.name()); return user; }
         user.setAccountKind(demo.kind(user.getId(), user.getUsername()).name());
         demo.expiresAt(user.getId()).ifPresent(user::setSandboxExpiresAt);
         return user;
@@ -139,7 +139,7 @@ public class AdminSessionService {
         Object factor = claims.get("mfa");
         boolean ok = MFA_TOTP.equals(factor) ? !shared(user.getUsername()) : MFA_SANDBOX_SHARED.equals(factor) && shared(user.getUsername());
         if (!ok) throw unauthorized();
-        if (sandboxOn() && demo != null && demo.expired(user.getId())) throw unauthorized();
+        if (demo != null && demo.blocked(user.getId())) throw unauthorized();   // 臨時帳號生命週期與目前沙盒設定無關
         return user;
     }
     private List<Permission> permissions(Integer id) { var list = roles.getUserBackendPermission(id); return list == null ? List.of() : list; }

@@ -55,10 +55,15 @@
   - 登出再登入 → 要求 TOTP。
   - 備援碼一次性。
 - 臨時帳號只能 GET（依角色權限），以及 POST 自己的 `/api/admin/mfa/backup-codes`、`/ack`。其他寫入回 403 `SANDBOX_DEMO_ACCOUNT`。
-- 到期後拒絕密碼登入與既有 session。
+- 到期後拒絕密碼登入、MFA 完成、既有 session 與 refresh。
+- **生命週期與目前沙盒設定無關**：關閉沙盒模式或 MFA 展示模式後，已建立的臨時帳號一律無法使用，不會變成一般員工。清理排程也照常執行；正式環境這張表是空的。
 - 清理排程每 5 分鐘刪除到期帳號，連同：
   - `staff_mfa`、備援碼、`staff_mfa_event`、`user_role`、`sandbox_demo_account`、`user`。
   - Redis 的 `shop:session:<id>:*` 與失敗計數。
+- 若臨時帳號被其他業務資料以外鍵參照（例如客服單指派）而無法刪除：
+  - 改為保留停用墓碑：`is_stop='T'`、換成無人知道的密碼、`auth_version+1`。
+  - 刪除 MFA、備援碼、MFA 事件、角色與臨時帳號紀錄，並清除 Redis session。
+  - 參照它的業務與稽核歷史不刪除，下次排程也不會卡在同一筆。
 - 資料表：V34 新增 `sandbox_demo_account`，只新增空表；正式環境永遠不寫入。
 
 `GET /api/sandbox/config` 回 `{quickDemo, mfaDemo, mfaDemoTtlMinutes}`，前端據此決定是否顯示入口。不含帳號名稱或密碼，正式環境回 404。
