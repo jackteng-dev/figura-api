@@ -23,7 +23,11 @@ public class AuthenticationController {
     @GetMapping("/auth/me")
     public Result<User> current(@AuthenticationPrincipal CustomUserDetails current) {
         var user = users.findAllByUserName(current.getUsername());
-        if (user != null) user.setMfaBackupAckPending(mfa.ackPending(current.getId()));   // 前端據此導向備援碼保存確認
+        if (user != null) {
+            sessions.withKind(user);   // 帳號類型只供前端顯示
+            // 前端據此導向備援碼保存確認；共用展示帳號不能管理 MFA，所以永遠不要求
+            user.setMfaBackupAckPending(!"SANDBOX_SHARED".equals(user.getAccountKind()) && mfa.ackPending(current.getId()));
+        }
         return Result.success(user);
     }
     @org.springframework.beans.factory.annotation.Autowired private dev.jackteng.figura.service.StaffMfaService mfa;

@@ -1,5 +1,30 @@
 # Figura（原 ELPSY Shop） 後端交接
 
+## 2026-11-26：公開沙盒 MFA 展示與快速展示帳號（V34，分支 `feat/sandbox-mfa-demo`，未合併）
+
+依作者 spec《Figura 公開沙盒：MFA 展示、快速展示帳號、商品多圖與受控重置 v2》第 2.1–2.3、2.5–2.6 節。
+
+- **完成**：
+  - `SandboxMode`：環境變數、預設關閉、啟動檢查。
+  - 快速展示：共用帳號逐字比對免 MFA，不能改安全設定。
+  - MFA 展示：臨時帳號走正式 MFA 路徑、專用唯讀角色、上限與 429、到期拒絕、排程清理。
+  - `/api/sandbox/config`；`accountKind`／`sandboxExpiresAt`；ops status 三個欄位；文件 `docs/SANDBOX.md` 與 `OPS_SECURITY.md`。
+- **重要檔案**：
+  - `config/SandboxMode.java`、`service/SandboxDemoService.java`、`controller/SandboxController.java`。
+  - `AdminSessionService`（`mfa` claim 允許 `SANDBOX_SHARED`，每次請求重新核對目前設定）。
+  - `StaffMfaService`（拒絕共用帳號；展示帳號強制保存備援碼）。
+  - `JwtAuthenticationFilter`（共用帳號、展示帳號的寫入限制）。
+  - `V34__sandbox_mfa_demo_accounts.sql`（只新增空表）。
+- **測試**：`SandboxModeTest`（6）、`SandboxIntegrationTest`（7，沙盒設定）、`SandboxDisabledIntegrationTest`（5，正式設定）。
+  - 本機全套 365 項：只有 2 項 `StaffAccessIntegrationTest` 錯誤，是既有的本機環境問題，與先前相同；其餘全過。
+- **Codex 唯讀審查**找到 2 項 P2，都已修正並加測試：
+  - 關閉沙盒後，既有臨時帳號不再受到期限制 → 生命週期改為與設定無關，關閉後一律拒絕。
+  - 外鍵參照（客服指派）讓清理永久失敗 → 改為停用墓碑。
+- **未完成**：spec 2.4 不需登入的沙盒初始化入口（`--sandbox.seed.dir`）與第 3 節資源格式 → 下一個 PR。過渡期伺服器 HTTP seed 改用共用帳號登入。
+- **部署**：
+  - V34 位於受保護路徑（`src/main/resources`），需受控切換；它只新增一張空表，正式環境不寫入。
+  - 正式 env 不得有任何沙盒變數。
+
 ## 2026-11-25：MFA 備援碼下載與保存確認（V32–V33，併入 PR #18，未合併）
 
 - 綁定與重新產生的回應附帳號與產生時間；Web 在瀏覽器端產生 `Figura-MFA-Recovery-Codes.txt` 下載（不經伺服器、不放 URL、不存 storage），取消「複製全部」。

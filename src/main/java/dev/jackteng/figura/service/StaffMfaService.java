@@ -69,6 +69,17 @@ public class StaffMfaService {
         this.key = k; this.hmacKey = h;
     }
     public boolean available() { return key != null; }
+    /** 公開沙盒（預設關閉）。單元測試未注入時視為正式環境。 */
+    private dev.jackteng.figura.config.SandboxMode sandbox;
+    private SandboxDemoService demo;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setSandbox(dev.jackteng.figura.config.SandboxMode sandbox, SandboxDemoService demo) { this.sandbox = sandbox; this.demo = demo; }
+    /** 公開沙盒共用展示帳號不能綁定 MFA、產生或確認備援碼（帳號由所有訪客共用）。 */
+    private void refuseShared(int user) {
+        if (sandbox == null || !sandbox.enabled()) return;
+        var names = db.queryForList("SELECT username FROM user WHERE id=?", String.class, user);
+        if (!names.isEmpty() && sandbox.isExempt(names.get(0))) throw fail(403, "這是公開沙盒的共用展示帳號，已停用安全設定變更");
+    }
     private static ResponseStatusException fail(int s, String m) { return new ResponseStatusException(HttpStatus.valueOf(s), m); }
     /** 強制 MFA：金鑰未設定時不得登入後台。 */
     public void requireAvailable() { if (!available()) throw fail(503, "後台雙因素驗證尚未設定，暫停員工登入，請聯絡系統管理者"); }
@@ -92,7 +103,8 @@ public class StaffMfaService {
     public boolean backupRequired(int user) {
         Integer n = db.queryForObject("SELECT COUNT(*) FROM user_role ur JOIN role r ON r.id=ur.role_id AND r.enabled=TRUE JOIN role_permission rp ON rp.role_id=r.id"
                 + " JOIN permissions_backend p ON p.id=rp.permission_id WHERE ur.user_id=? AND p.code='access.mfa.reset'", Integer.class, user);
-        return n != null && n > 0;
+        // 公開沙盒 MFA 展示帳號比照管理員強制保存，讓訪客看到完整流程（展示角色本身沒有任何管理權限）
+        return (n != null && n > 0) || (demo != null && demo.isDemoAccount(user));
     }
     /**
      * 是否需要完成保存確認：依「目前」權限即時判斷——具 access.mfa.reset 且已確認批次 ≠ 目前批次。
@@ -120,6 +132,7 @@ public class StaffMfaService {
      */
     @Transactional
     public Status acknowledge(int user, String batchId, boolean downloaded, boolean confirmed) {
+        refuseShared(user);
         var row = lock(user, null);
         if (row == null || !truthy(row.get("enabled"))) throw fail(409, "尚未完成雙因素綁定");
         if (batchId == null || !batchId.equals(row.get("backup_batch_id"))) throw fail(409, "備援碼已重新產生，這份已失效；請以最新一組確認");
@@ -162,6 +175,7 @@ public class StaffMfaService {
         @SuppressWarnings("unchecked") List<Object> p = redis.execute(PEEK, List.of(k));
         if (p == null || p.isEmpty() || p.get(0) == null) throw fail(401, "驗證已過期，請重新登入");
         int user = Integer.parseInt(String.valueOf(p.get(0))), auth = authOf(p);
+        refuseShared(user);
         return tx.execute(st -> {
             var row = lock(user, auth);
             if (row != null && truthy(row.get("enabled"))) throw fail(409, "已完成雙因素綁定，請重新登入");
@@ -182,6 +196,7 @@ public class StaffMfaService {
         @SuppressWarnings("unchecked") List<Object> p = redis.execute(RESERVE, List.of(k));
         if (p == null || p.isEmpty() || p.get(0) == null) throw fail(401, "驗證已過期，請重新登入");
         int user = Integer.parseInt(String.valueOf(p.get(0))), auth = authOf(p);
+        refuseShared(user);
         reserveAccount(user, k);
         BackupCodes codes = tx.execute(st -> {
             var row = lock(user, auth);
@@ -228,6 +243,7 @@ public class StaffMfaService {
     // ---- 已登入員工：重新產生備援碼（需目前的 TOTP） ----
     public BackupCodes regenerateBackupCodes(int user, String code) {
         requireAvailable();
+        refuseShared(user);
         reserveAccount(user, null);   // 與登入共用帳號層級額度，避免以 session 無限猜碼
         BackupCodes out = tx.execute(st -> {
             var row = lock(user, null);
