@@ -1,6 +1,6 @@
 # Figura（原 ELPSY Shop） 後端交接
 
-## 2026-11-27：公開沙盒初始化入口（spec 2.4，分支 `feat/sandbox-seeder`，基於 PR #19，未合併）
+## 2026-11-27：公開沙盒初始化入口（spec 2.4，分支 `feat/sandbox-seeder`，PR #20；#19 已由作者合併，本 PR 未合併）
 
 - **完成**：
   - `SandboxSeedCatalog`：spec 第 3 節 v2 格式的完整驗證，在任何寫入前失敗。
