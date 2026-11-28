@@ -88,6 +88,19 @@ class SandboxDisabledIntegrationTest extends ShopIntegrationSupport {
         assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM sandbox_demo_account WHERE user_id=?", Integer.class, uid));
     }
 
+    @Autowired dev.jackteng.figura.config.SandboxSeeder seeder;
+    @Test void seederRefusesOutsideSandbox(@org.junit.jupiter.api.io.TempDir java.nio.file.Path dir) throws Exception {
+        dev.jackteng.figura.config.SandboxSeedFixture.write(dir, dev.jackteng.figura.config.SandboxSeedFixture.catalog(dir, "prod"));
+        int users = jdbc.queryForObject("SELECT COUNT(*) FROM user", Integer.class), products = jdbc.queryForObject("SELECT COUNT(*) FROM catalog_product", Integer.class);
+        // 正式設定：初始化入口立即拒絕（exit 3），不建立系統帳號、不寫任何資料
+        assertEquals(3, seeder.execute(new org.springframework.boot.DefaultApplicationArguments("--sandbox.seed.dir=" + dir)));
+        assertThrows(dev.jackteng.figura.config.SandboxSeeder.Refused.class, () -> seeder.seed(dir));
+        // 沒有參數的一般啟動完全不動作
+        seeder.run(new org.springframework.boot.DefaultApplicationArguments());
+        assertEquals(users, jdbc.queryForObject("SELECT COUNT(*) FROM user", Integer.class));
+        assertEquals(products, jdbc.queryForObject("SELECT COUNT(*) FROM catalog_product", Integer.class));
+    }
+
     @Test void staffAccountKindIsStaff() throws Exception {
         var admin = admin();
         assertEquals("STAFF", data(ok(admin, "GET", "/auth/me", null, 200)).path("accountKind").asText());

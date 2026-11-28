@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Component
 @Profile("demo")
+@org.springframework.core.annotation.Order(org.springframework.core.Ordered.LOWEST_PRECEDENCE - 100)   // 明確早於 SandboxSeeder
 public class DemoAccountInitializer implements ApplicationRunner {
     private final JdbcTemplate jdbc;
     private final BCryptPasswordEncoder encoder;
