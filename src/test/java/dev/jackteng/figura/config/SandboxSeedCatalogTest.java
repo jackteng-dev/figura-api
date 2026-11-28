@@ -71,7 +71,9 @@ class SandboxSeedCatalogTest {
         // 寫入途中才會失敗的條件，在預檢就拒絕
         doc = valid(); items(doc).get(40).put("preorder", Map.of("capacity", 16, "deadlineDaysFromReset", 30, "deadlineTime", "23:59+08:00", "arrivalFromDaysFromReset", 20, "arrivalToDaysFromReset", 40)); rejects(doc, "到貨早於截止");
         doc = valid(); doc.put("customers", List.of(Map.of("key", "a", "email", "a@example.test", "phone", "0900000001", "password", "p"), Map.of("key", "b", "email", "b@example.test", "phone", "0900000001", "password", "p"))); doc.put("orders", List.of()); rejects(doc, "手機重複");
-        doc = valid(); items(doc).get(0).put("title", "長".repeat(115)); rejects(doc, "預購批次名稱超過 120 字");
+        doc = valid(); items(doc).get(40).put("title", "長".repeat(115)); rejects(doc, "預購批次名稱超過 120 字");
+        doc = valid(); items(doc).get(0).put("title", "長".repeat(115)); SandboxSeedFixture.write(dir, doc);
+        assertDoesNotThrow(() -> SandboxSeedCatalog.load(dir, json), "現貨商品不建立批次，不受批次名稱限制");
     }
 
     @Test void readsAreBoundedAndRecheckedAtUploadTime() throws Exception {
@@ -115,6 +117,19 @@ class SandboxSeedCatalogTest {
         assertTrue(SandboxSeedLauncher.requested(new String[]{arg})); assertFalse(SandboxSeedLauncher.requested(new String[]{"--server.port=1"}));
         var launch = List.of(SandboxSeedLauncher.launchArgs(new String[]{arg}));
         assertTrue(launch.contains("--server.address=127.0.0.1") && launch.contains("--server.port=0"), "初始化程序不對外提供 HTTP");
+        var overridden = List.of(SandboxSeedLauncher.launchArgs(new String[]{arg, "--server.port=9090", "--server.address=0.0.0.0"}));
+        assertEquals(List.of(arg, "--server.address=127.0.0.1", "--server.port=0"), overridden, "既有 address／port 被移除，不會合併成多值");
+    }
+
+    @Test void targetStatesMustBeCurrentNotJustPast() {
+        java.util.function.Function<Object[], Map<String, Object>> row = v -> Map.of("status", v[0], "fulfillment_status", v[1], "live", v[2], "ret", v[3], "requested", v[4]);
+        assertTrue(SandboxSeeder.reached("PENDING_PAYMENT", row.apply(new Object[]{"PENDING_PAYMENT", "UNFULFILLED", 1, 0, 0})));
+        assertFalse(SandboxSeeder.reached("PENDING_PAYMENT", row.apply(new Object[]{"PENDING_PAYMENT", "UNFULFILLED", 0, 0, 0})), "已過付款期限");
+        assertFalse(SandboxSeeder.reached("PENDING_PAYMENT", row.apply(new Object[]{"EXPIRED", "UNFULFILLED", 0, 0, 0})));
+        assertTrue(SandboxSeeder.reached("RETURN_REQUESTED", row.apply(new Object[]{"PAID", "DELIVERED", 0, 1, 1})));
+        assertFalse(SandboxSeeder.reached("RETURN_REQUESTED", row.apply(new Object[]{"PAID", "DELIVERED", 0, 1, 0})), "退貨已被拒絕或已驗收");
+        assertFalse(SandboxSeeder.reached("DELIVERED", row.apply(new Object[]{"PAID", "DELIVERED", 0, 1, 1})));
+        assertTrue(SandboxSeeder.reached("SHIPPED", row.apply(new Object[]{"PAID", "SHIPPED", 0, 0, 0})));
     }
 
     @Test void creationOrderInterleavesSeriesAndReverses() throws Exception {

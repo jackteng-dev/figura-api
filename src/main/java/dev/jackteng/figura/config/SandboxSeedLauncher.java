@@ -36,7 +36,8 @@ public final class SandboxSeedLauncher {
 
     /** 初始化程序不對外提供 HTTP：只綁 127.0.0.1 的隨機埠（命令列參數優先於環境設定）。 */
     public static String[] launchArgs(String[] args) {
-        var out = new ArrayList<>(Arrays.asList(args));
+        // 先移除任何既有的 address／port 選項，避免與強制值合併成多值而綁定失敗
+        var out = new ArrayList<>(Arrays.stream(args).filter(a -> !a.startsWith("--server.address") && !a.startsWith("--server.port")).toList());
         out.add("--server.address=127.0.0.1"); out.add("--server.port=0");
         return out.toArray(String[]::new);
     }

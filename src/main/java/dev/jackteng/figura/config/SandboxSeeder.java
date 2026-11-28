@@ -180,6 +180,9 @@ public class SandboxSeeder implements ApplicationRunner {
             var params = new ArrayList<Object>(); params.add(role); params.addAll(ROLE_PERMISSIONS);
             db.update("DELETE FROM role_permission WHERE role_id=? AND permission_id NOT IN (SELECT id FROM permissions_backend WHERE code IN (" + in + "))", params.toArray());
             db.update("INSERT IGNORE INTO role_permission(role_id,permission_id) SELECT ?,id FROM permissions_backend WHERE code IN (" + in + ")", params.toArray());
+            // 系統角色只屬於系統帳號：若被指派給其他員工，改寫授權會讓對方既有 session 取得權限 → 拒絕（整個交易回滾）
+            if (db.queryForObject("SELECT COUNT(*) FROM user_role ur JOIN user u ON u.id=ur.user_id WHERE ur.role_id=? AND u.username<>?", Integer.class, role, ACTOR) > 0)
+                throw new Refused("「" + ROLE_NAME + "」角色已被指派給其他員工；拒絕修改其授權");
             int user;
             if (users.isEmpty()) {
                 db.update("INSERT INTO user(username,password,first_name,last_name,role,is_stop,created_time,modified_time) VALUES(?,?,?,'','S','F',NOW(),NOW())", ACTOR, unusable, "沙盒初始化");
@@ -332,17 +335,23 @@ public class SandboxSeeder implements ApplicationRunner {
             else if (truthy(existing.get(0).get("deleted")))
                 throw new IllegalStateException("示範會員的地址已被刪除；請使用新的空沙盒 DB 重新初始化");
             else addressVersion = ((Number) existing.get(0).get("version")).intValue();
-            for (var line : o.lines()) {
-                String skuId = db.queryForObject("SELECT id FROM catalog_sku WHERE code=?", String.class, line.code());
-                shopping.setItem(customer, skuId, new ShoppingPayloads.CartWrite(shopping.cart(customer).version(), line.quantity()));
-            }
+            // 購物車先清掉不屬於這筆訂單的品項（例如上次中斷時殘留），再設定本訂單的絕對數量
+            var wanted = new LinkedHashMap<String, Integer>();
+            for (var line : o.lines()) wanted.put(db.queryForObject("SELECT id FROM catalog_sku WHERE code=?", String.class, line.code()), line.quantity());
+            for (var existingLine : shopping.cart(customer).items())
+                if (!wanted.containsKey(existingLine.skuId())) shopping.removeItem(customer, existingLine.skuId(), shopping.cart(customer).version());
+            wanted.forEach((skuId, qty) -> shopping.setItem(customer, skuId, new ShoppingPayloads.CartWrite(shopping.cart(customer).version(), qty)));
             var cart = shopping.cart(customer);
+            var actual = new HashMap<String, Integer>(); cart.items().forEach(l -> actual.put(l.skuId(), l.quantity()));
+            if (!actual.equals(wanted)) throw new IllegalStateException("示範訂單的購物車內容與 seed 不符，未下單");
             orderId = orders.place(customer, new OrderPayloads.Place(placeRequest, cart.version(), address, addressVersion, cart.subtotalTwd())).order().id();
         } else orderId = prior.get(0);
         // 依訂單「目前」狀態接續：已完成的步驟略過（既有 service 的重播核對原始版本，不能拿新版本重送同一編號）
         String state = o.state();
         if (!Set.of("PENDING_PAYMENT", "PAID").contains(status(orderId)))
             throw new IllegalStateException("示範訂單已進入終態 " + status(orderId) + "（初始化中斷過久），不能接續；請使用新的空沙盒 DB 重新初始化");
+        if (status(orderId).equals("PENDING_PAYMENT") && !truthy(db.queryForObject("SELECT expires_at>NOW(6) FROM customer_order WHERE id=?", Object.class, orderId)))
+            throw new IllegalStateException("示範訂單已超過付款期限（初始化中斷過久），不能接續；請使用新的空沙盒 DB 重新初始化");
         if (state.equals("PENDING_PAYMENT")) return;
         if (status(orderId).equals("PENDING_PAYMENT")) {
             var started = payments.start(customer, orderId, new PaymentPayloads.Start(uuid(key + "|pay"), orders.detail(customer, orderId).version()));
@@ -378,7 +387,7 @@ public class SandboxSeeder implements ApplicationRunner {
         int ordersDone = 0;
         for (int i = 0; i < data.orders().size(); i++) {
             var o = data.orders().get(i);
-            var rows = db.queryForList("SELECT o.status,o.fulfillment_status,(SELECT COUNT(*) FROM mock_order_return r WHERE r.order_id=o.id) ret FROM customer_order o WHERE o.customer_id=? AND o.request_id=?",
+            var rows = db.queryForList("SELECT o.status,o.fulfillment_status,(o.expires_at>NOW(6)) live,(SELECT COUNT(*) FROM mock_order_return r WHERE r.order_id=o.id) ret,(SELECT COUNT(*) FROM mock_order_return r WHERE r.order_id=o.id AND r.status='REQUESTED') requested FROM customer_order o WHERE o.customer_id=? AND o.request_id=?",
                     customerIds.get(o.customer()), uuid(keys.get(i) + "|place"));
             if (rows.size() == 1 && reached(o.state(), rows.get(0))) ordersDone++;
         }
@@ -391,13 +400,13 @@ public class SandboxSeeder implements ApplicationRunner {
 
     static boolean reached(String target, Map<String, Object> r) {
         String status = (String) r.get("status"), fulfillment = (String) r.get("fulfillment_status");
-        boolean returned = ((Number) r.get("ret")).intValue() > 0;
+        boolean returned = ((Number) r.get("ret")).intValue() > 0, requested = ((Number) r.get("requested")).intValue() > 0;
         return switch (target) {
-            case "PENDING_PAYMENT" -> status.equals("PENDING_PAYMENT");
+            case "PENDING_PAYMENT" -> status.equals("PENDING_PAYMENT") && truthy(r.get("live"));   // 已過期限（排程尚未處理）也不算完成
             case "PAID" -> status.equals("PAID") && fulfillment.equals("UNFULFILLED");
             case "SHIPPED" -> status.equals("PAID") && fulfillment.equals("SHIPPED");
             case "DELIVERED" -> status.equals("PAID") && fulfillment.equals("DELIVERED") && !returned;
-            default -> status.equals("PAID") && fulfillment.equals("DELIVERED") && returned;
+            default -> status.equals("PAID") && fulfillment.equals("DELIVERED") && requested;   // 退貨仍在申請中（未拒絕、未驗收）
         };
     }
     private static boolean truthy(Object v) { return Boolean.TRUE.equals(v) || (v instanceof Number n && n.intValue() != 0); }

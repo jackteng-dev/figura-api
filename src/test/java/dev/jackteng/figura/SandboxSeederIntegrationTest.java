@@ -56,11 +56,16 @@ class SandboxSeederIntegrationTest extends ShopIntegrationSupport {
         assertEquals(4, seeder.execute(new DefaultApplicationArguments("--sandbox.seed.dir=" + broken)));
         assertEquals(productsBefore, count("SELECT COUNT(*) FROM catalog_product")); assertEquals(eventsBefore, count("SELECT COUNT(*) FROM catalog_master_event"));
 
-        // 模擬先前一次中斷：會員與示範地址已提交、訂單尚未建立 → 重跑必須沿用地址目前版本，不能永久 409
+        // 模擬先前一次中斷：商品與會員已建立、示範地址已提交、購物車殘留一件不屬於任何示範訂單的商品，但訂單尚未建立
+        var noOrders = new java.util.LinkedHashMap<>(doc); noOrders.put("orders", List.of());
+        SandboxSeedFixture.write(dir, noOrders);
+        assertEquals("SEEDED", seeder.seed(dir).result());
         @SuppressWarnings("unchecked") var buyerA = ((List<Map<String, Object>>) doc.get("customers")).get(0);
-        String buyerId = registration.register(new dev.jackteng.figura.dto.CustomerPayloads.Registration(
-                "Interrupted-" + UUID.randomUUID(), (String) buyerA.get("email"), (String) buyerA.get("phone"))).getId();
+        String buyerId = jdbc.queryForObject("SELECT id FROM customer WHERE email=?", String.class, buyerA.get("email"));
         shopping.saveAddress(buyerId, SandboxSeeder.addressId(buyerId), new dev.jackteng.figura.dto.ShoppingPayloads.AddressWrite(0, "虛構收件人", "0900000000", "100", "範例市", "展示區", "沙盒路 1 號"));
+        String residual = jdbc.queryForObject("SELECT id FROM catalog_sku WHERE code='FIGURA-AI-030'", String.class);
+        shopping.setItem(buyerId, residual, new dev.jackteng.figura.dto.ShoppingPayloads.CartWrite(shopping.cart(buyerId).version(), 1));
+        SandboxSeedFixture.write(dir, doc);
 
         // 第一次初始化
         var summary = seeder.seed(dir);
@@ -69,6 +74,7 @@ class SandboxSeederIntegrationTest extends ShopIntegrationSupport {
         assertEquals(Map.of("MAIN", 95, "FACE", 95, "DETAIL", 95, "SCENE", 95, "REAR", 95), summary.images());
         assertEquals(SandboxSeedCatalog.load(dir, new com.fasterxml.jackson.databind.ObjectMapper()).fingerprint(), summary.seedSha256());
         assertEquals(1, count("SELECT COUNT(*) FROM customer_address WHERE customer_id=?", buyerId), "沿用同一個示範地址");
+        assertEquals(0, count("SELECT COUNT(*) FROM customer_order_line i JOIN customer_order o ON o.id=i.order_id WHERE o.customer_id=? AND i.sku_id=?", buyerId, residual), "殘留的購物車品項沒有被一起下單");
 
         // 每件 5 張圖，類型與排序正確，主圖是 MAIN
         for (var row : jdbc.queryForList("SELECT s.product_id FROM catalog_sku s WHERE " + CODES)) {
@@ -117,6 +123,22 @@ class SandboxSeederIntegrationTest extends ShopIntegrationSupport {
         assertEquals(3, seeder.execute(new DefaultApplicationArguments("--sandbox.seed.dir=" + dir)));
         assertEquals(auditBefore, count("SELECT COUNT(*) FROM inventory_adjustment"));
         assertEquals(authBefore, count("SELECT auth_version FROM user WHERE username=?", SandboxSeeder.ACTOR), "拒絕時系統帳號沒有被啟用");
+
+        // 系統角色被指派給其他員工：拒絕改寫授權（對方 session 不會取得新權限），交易回滾
+        first.put("title", "沙盒測試公仔 1 " + run); SandboxSeedFixture.write(dir, doc);
+        int role = jdbc.queryForObject("SELECT role_id FROM user_role ur JOIN user u ON u.id=ur.user_id WHERE u.username=?", Integer.class, SandboxSeeder.ACTOR);
+        int other = jdbc.queryForObject("SELECT id FROM user WHERE username<>? ORDER BY id LIMIT 1", Integer.class, SandboxSeeder.ACTOR);
+        jdbc.update("DELETE FROM role_permission WHERE role_id=? AND permission_id=(SELECT id FROM permissions_backend WHERE code='inventory.adjust')", role);
+        jdbc.update("INSERT INTO user_role(user_id,role_id) VALUES(?,?)", other, role);
+        try {
+            assertEquals(3, seeder.execute(new DefaultApplicationArguments("--sandbox.seed.dir=" + dir)));
+            assertEquals(0, count("SELECT COUNT(*) FROM role_permission rp JOIN permissions_backend p ON p.id=rp.permission_id WHERE rp.role_id=? AND p.code='inventory.adjust'", role), "授權沒有被改寫");
+            assertEquals("T", jdbc.queryForObject("SELECT is_stop FROM user WHERE username=?", String.class, SandboxSeeder.ACTOR));
+        } finally {
+            jdbc.update("DELETE FROM user_role WHERE user_id=? AND role_id=?", other, role);   // 只移除本測試加入的指派
+        }
+        assertEquals(0, seeder.execute(new DefaultApplicationArguments("--sandbox.seed.dir=" + dir)), "移除指派後可正常重跑並補回授權");
+        assertEquals(1, count("SELECT COUNT(*) FROM role_permission rp JOIN permissions_backend p ON p.id=rp.permission_id WHERE rp.role_id=? AND p.code='inventory.adjust'", role));
     }
 
     /**

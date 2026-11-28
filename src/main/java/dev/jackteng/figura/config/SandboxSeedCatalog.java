@@ -104,7 +104,7 @@ public final class SandboxSeedCatalog {
                 images.add(new Image(type, i, alt, root, file, sha, contentType));
             }
             String series = text(n, "series", 80);
-            if ((title + "｜" + series + "展示預購").length() > 120) throw invalid(code + " 的名稱與系列過長（預購批次名稱最多 120 字）");
+            if (preorder != null && (title + "｜" + series + "展示預購").length() > 120) throw invalid(code + " 的名稱與系列過長（預購批次名稱最多 120 字）");
             items.add(new Item(code, title, text(n, "brand", 80), series, text(n, "category", 80), text(n, "variant", 80),
                     price, stock, preorder, description, List.copyOf(images)));
         }

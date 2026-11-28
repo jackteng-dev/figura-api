@@ -12,7 +12,7 @@
   - 細節見 `docs/SANDBOX.md` §4。
 - **格式來源**：作者提供的 `figura-sandbox-seed-format-20261127.zip`（伺服器現行 catalog.json、v2 建議格式、schema）。
 - **測試**：
-  - `SandboxSeedCatalogTest`（8）：缺檔、SHA 不符、類型與內容不符、路徑跳出、結構規則、建立順序、讀取上限與重新核對、訂單編號不受順序影響、Spring 前預檢。
+  - `SandboxSeedCatalogTest`（9）：缺檔、SHA 不符、類型與內容不符、路徑跳出、結構規則、建立順序、讀取上限與重新核對、訂單編號不受順序影響、Spring 前預檢。
   - `SandboxSeederIntegrationTest`（2，需 SeaweedFS）：
     - 驗證失敗 exit 4 且無寫入。
     - 95 件 × 5 張圖的類型、排序、主圖正確；AI 標示保留；30 件現貨、64 個預購、8 筆訂單；系統帳號停用。
@@ -32,7 +32,8 @@
   - P2 摘要誤報：逐筆核對訂單是否到達目標狀態；終態訂單不復活，exit 1。
   - P2 預檢不足：到貨早於截止、手機重複、批次名稱超過 120 字都在寫入前拒絕。
   - P2 測試清理：只處理本次 run 建立的商品。
-  - 測試：Sandbox 相關 5 個測試類別 29 個測試全數通過（本機隔離 MySQL／Redis／SeaweedFS）。
+  - Codex 第二次核對（修正後）再提出 6 個 P2，已修正：HTTP 強制參數先移除既有 address／port；下單前清除購物車殘留並核對內容；待付款須未過期限；申請退貨須仍為 REQUESTED；系統角色被指派給他人時拒絕改寫授權；批次名稱長度只檢查預購商品。
+  - 測試：Sandbox 相關 5 個測試類別 30 個測試全數通過（本機隔離 MySQL／Redis／SeaweedFS），含購物車殘留、角色被指派他人、狀態必須是目前狀態。
 
 ## 2026-11-26：公開沙盒 MFA 展示與快速展示帳號（V34，分支 `feat/sandbox-mfa-demo`，未合併）
 
