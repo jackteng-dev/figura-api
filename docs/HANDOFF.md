@@ -12,7 +12,7 @@
   - 細節見 `docs/SANDBOX.md` §4。
 - **格式來源**：作者提供的 `figura-sandbox-seed-format-20261127.zip`（伺服器現行 catalog.json、v2 建議格式、schema）。
 - **測試**：
-  - `SandboxSeedCatalogTest`（5）：缺檔、SHA 不符、類型與內容不符、路徑跳出、結構規則、建立順序。
+  - `SandboxSeedCatalogTest`（8）：缺檔、SHA 不符、類型與內容不符、路徑跳出、結構規則、建立順序、讀取上限與重新核對、訂單編號不受順序影響、Spring 前預檢。
   - `SandboxSeederIntegrationTest`（2，需 SeaweedFS）：
     - 驗證失敗 exit 4 且無寫入。
     - 95 件 × 5 張圖的類型、排序、主圖正確；AI 標示保留；30 件現貨、64 個預購、8 筆訂單；系統帳號停用。
@@ -23,6 +23,16 @@
   - reset 改用 `docker compose run --rm ... api --sandbox.seed.dir=/seed`，依 exit code 判斷成功；失敗時還原 last-good。
   - 沙盒 env 需開啟 `MOCK_PAYMENTS／FULFILLMENT／RETURNS_ENABLED`，與現行 seed 相同。
 - **未改**：`src/main/resources`（沒有新 migration）。
+- **Codex 唯讀審查（2026-11-28）後的修正**：
+  - P1 地址已提交、下單前中斷 → 重跑永久 409：改為每位會員一個固定地址，重跑沿用目前版本；整合測試模擬此中斷。
+  - P1 驗證太晚：新增 `SandboxSeedLauncher`，在 Spring 啟動前預檢沙盒開關與 seed 資源，不通過不連 DB；初始化程序 HTTP 只綁 127.0.0.1 隨機埠；`DemoAccountInitializer` 明確排在 Seeder 之前。
+  - P2 讀取無硬上限／TOCTOU：所有讀取最多上限＋1 byte、不跟隨連結；上傳前重新核對路徑；驗證後才被換檔回報 exit 1（不再說「未寫入」）。
+  - P2 資料歸屬：寫入前核對同 code 商品為同類 seed 建立、新會員手機未被使用，否則 exit 3；訂單編號改綁內容（順序變動不重複下單）；摘要加 `seedSha256`。
+  - P2 系統帳號：啟用時遞增 `auth_version`；同名非系統帳號拒絕接手；鎖序改 guard→員工→角色。SIGKILL 時帳號可能維持啟用（密碼未知、舊 session 已撤銷），已記錄於 SANDBOX.md。
+  - P2 摘要誤報：逐筆核對訂單是否到達目標狀態；終態訂單不復活，exit 1。
+  - P2 預檢不足：到貨早於截止、手機重複、批次名稱超過 120 字都在寫入前拒絕。
+  - P2 測試清理：只處理本次 run 建立的商品。
+  - 測試：Sandbox 相關 5 個測試類別 29 個測試全數通過（本機隔離 MySQL／Redis／SeaweedFS）。
 
 ## 2026-11-26：公開沙盒 MFA 展示與快速展示帳號（V34，分支 `feat/sandbox-mfa-demo`，未合併）
 

@@ -62,7 +62,7 @@ public class SandboxSeeder implements ApplicationRunner {
     private static final ZoneId TAIPEI = ZoneId.of("Asia/Taipei");
     private static final Logger log = LoggerFactory.getLogger(SandboxSeeder.class);
 
-    public record Summary(String result, int products, int published, int preorders, int orders, Map<String, Integer> images) {}
+    public record Summary(String result, int products, int published, int preorders, int orders, Map<String, Integer> images, String seedSha256) {}
 
     private final ApplicationContext context; private final SandboxMode sandbox; private final JdbcTemplate db; private final DataSource dataSource;
     private final ObjectMapper json; private final BCryptPasswordEncoder passwords; private final TransactionTemplate tx;
@@ -123,8 +123,13 @@ public class SandboxSeeder implements ApplicationRunner {
                 try (var rs = st.executeQuery()) { if (!rs.next() || rs.getInt(1) != 1) throw new Refused("另一個沙盒初始化正在執行"); }
             }
             try {
+                preflight(catalogData);   // 與既有資料的衝突在任何寫入之前拒絕
                 var actor = enableActor();
                 try { return populate(catalogData, actor); }
+                catch (SandboxSeedCatalog.Invalid e) {
+                    // 驗證後檔案才被變更：前面的步驟可能已提交，不能回報「未寫入」
+                    throw new IllegalStateException(e.getMessage() + "（初始化途中發生，已完成的步驟保留；請還原 seed 後重跑）");
+                }
                 finally { disableActor(actor.getId()); }
             } finally {
                 try (var st = lock.prepareStatement("SELECT RELEASE_LOCK(?)")) { st.setString(1, LOCK); st.execute(); }
@@ -133,10 +138,37 @@ public class SandboxSeeder implements ApplicationRunner {
     }
 
     // ---- 系統員工：只有初始化所需權限，執行期間啟用、結束即停用 ----
+    /**
+     * 寫入前核對既有資料：同 code 的商品必須是先前由同類 seed 建立（名稱相同、AI_CONCEPT、description 以 AI 標示開頭），
+     * 新會員的手機不可已被他人使用；否則拒絕，不接手非本初始化建立的資料。
+     */
+    private void preflight(SandboxSeedCatalog data) {
+        for (var item : data.items()) {
+            var rows = db.queryForList("SELECT p.title,p.description,p.content_origin FROM catalog_sku s JOIN catalog_product p ON p.id=s.product_id WHERE s.code=?", item.code());
+            if (rows.isEmpty()) continue;
+            var r = rows.get(0);
+            if (!item.title().equals(r.get("title")) || !"AI_CONCEPT".equals(r.get("content_origin"))
+                    || !String.valueOf(r.get("description")).startsWith(SandboxSeedCatalog.AI_MARKER))
+                throw new Refused(item.code() + " 已存在但不是這份 seed 建立的展示商品；請使用新的空沙盒 DB");
+        }
+        for (var c : data.customers()) {
+            if (c.builtin() || customers.byEmail(c.email()) != null) continue;
+            if (customers.byPhone(c.phone()) != null) throw new Refused("會員 " + c.key() + " 的手機已被其他會員使用；請使用新的空沙盒 DB");
+        }
+    }
+
     private CustomUserDetails enableActor() {
-        String unusable = passwords.encode(randomText(40));   // 沒有人知道的密碼；登入另需 MFA
+        String unusable = passwords.encode(randomText(40));   // 沒有人知道、也不保存的密碼；登入另需 MFA
         Integer id = tx.execute(st -> {
+            // 鎖序與員工治理一致：guard → 員工 → 角色／授權
             db.queryForObject("SELECT id FROM staff_access_guard WHERE id=1 FOR UPDATE", Integer.class);
+            var users = db.queryForList("SELECT id FROM user WHERE username=? FOR UPDATE", Integer.class, ACTOR);
+            if (!users.isEmpty()) {
+                // 只接手先前由本入口建立的系統帳號（只有「沙盒初始化」角色或沒有角色）
+                int foreign = db.queryForObject("SELECT COUNT(*) FROM user_role ur JOIN role r ON r.id=ur.role_id WHERE ur.user_id=? AND NOT (r.name=? AND r.description=?)",
+                        Integer.class, users.get(0), ROLE_NAME, ROLE_DESCRIPTION);
+                if (foreign > 0) throw new Refused("已有同名員工 " + ACTOR + " 且不是沙盒初始化系統帳號；拒絕接手");
+            }
             var roleIds = db.queryForList("SELECT id FROM role WHERE name=? AND description=? ORDER BY id LIMIT 1", Integer.class, ROLE_NAME, ROLE_DESCRIPTION);
             int role;
             if (roleIds.isEmpty()) {
@@ -148,14 +180,13 @@ public class SandboxSeeder implements ApplicationRunner {
             var params = new ArrayList<Object>(); params.add(role); params.addAll(ROLE_PERMISSIONS);
             db.update("DELETE FROM role_permission WHERE role_id=? AND permission_id NOT IN (SELECT id FROM permissions_backend WHERE code IN (" + in + "))", params.toArray());
             db.update("INSERT IGNORE INTO role_permission(role_id,permission_id) SELECT ?,id FROM permissions_backend WHERE code IN (" + in + ")", params.toArray());
-            var users = db.queryForList("SELECT id FROM user WHERE username=? FOR UPDATE", Integer.class, ACTOR);
             int user;
             if (users.isEmpty()) {
                 db.update("INSERT INTO user(username,password,first_name,last_name,role,is_stop,created_time,modified_time) VALUES(?,?,?,'','S','F',NOW(),NOW())", ACTOR, unusable, "沙盒初始化");
                 user = db.queryForObject("SELECT id FROM user WHERE username=?", Integer.class, ACTOR);
             } else {
                 user = users.get(0);
-                db.update("UPDATE user SET is_stop='F',password=?,modified_time=NOW() WHERE id=?", unusable, user);
+                db.update("UPDATE user SET is_stop='F',password=?,auth_version=auth_version+1,modified_time=NOW() WHERE id=?", unusable, user);   // 撤銷任何舊 session
             }
             db.update("DELETE FROM user_role WHERE user_id=?", user);
             db.update("INSERT INTO user_role(user_id,role_id) VALUES(?,?)", user, role);
@@ -182,8 +213,9 @@ public class SandboxSeeder implements ApplicationRunner {
         var customerIds = new HashMap<String, String>();
         for (var c : data.customers()) customerIds.put(c.key(), customer(c));
         var byCode = new HashMap<String, SandboxSeedCatalog.Item>(); data.items().forEach(i -> byCode.put(i.code(), i));
-        for (int i = 0; i < data.orders().size(); i++) order(i, data.orders().get(i), customerIds, byCode, actor);
-        return summary(data);
+        var keys = orderKeys(data, customerIds);
+        for (int i = 0; i < data.orders().size(); i++) order(keys.get(i), data.orders().get(i), customerIds.get(data.orders().get(i).customer()), actor);
+        return summary(data, customerIds, keys);
     }
 
     /** 建立順序：依 series 交錯排列後反向建立，讓「最新」列表混合各系列（與現行 HTTP seed 相同）。 */
@@ -270,17 +302,38 @@ public class SandboxSeeder implements ApplicationRunner {
         return registration.register(new CustomerPayloads.Registration(randomText(24), c.email(), c.phone())).getId();
     }
 
-    private void order(int index, SandboxSeedCatalog.Order o, Map<String, String> customerIds, Map<String, SandboxSeedCatalog.Item> items, CustomUserDetails actor) {
-        // 操作編號綁定會員 ID：同一份 seed 重跑時相同，不同會員（例如重建後的 DB）不會撞號
-        String customer = customerIds.get(o.customer()), key = "order|" + index + "|" + customer;
+    /**
+     * 訂單操作編號：綁定會員 ID 與訂單內容（目標狀態、品項、數量），相同內容的第 n 筆以序號區分；
+     * 調整 seed 中訂單的排列順序不會重複建立，也不會把不同內容誤認成已完成的訂單。
+     */
+    static List<String> orderKeys(SandboxSeedCatalog data, Map<String, String> customerIds) {
+        var seen = new HashMap<String, Integer>(); var keys = new ArrayList<String>();
+        for (var o : data.orders()) {
+            var lines = new StringBuilder();
+            o.lines().stream().sorted(Comparator.comparing(SandboxSeedCatalog.OrderLine::code)).forEach(l -> lines.append(l.code()).append('x').append(l.quantity()).append(';'));
+            String base = "order|" + customerIds.get(o.customer()) + "|" + o.state() + "|" + lines;
+            keys.add(base + "|" + seen.merge(base, 1, Integer::sum));
+        }
+        return keys;
+    }
+    /** 每位會員一個固定編號的示範地址；重跑時沿用目前版本（地址已提交、下單前中斷的情況）。 */
+    public static String addressId(String customerId) { return uuid("address|" + customerId); }
+
+    private void order(String key, SandboxSeedCatalog.Order o, String customer, CustomUserDetails actor) {
         String placeRequest = uuid(key + "|place");
         var prior = db.queryForList("SELECT id FROM customer_order WHERE customer_id=? AND request_id=?", String.class, customer, placeRequest);
         String orderId;
         if (prior.isEmpty()) {
-            String address = uuid(key + "|address");
-            int addressVersion = shopping.saveAddress(customer, address, new ShoppingPayloads.AddressWrite(0, "虛構收件人", "0900000000", "100", "範例市", "展示區", "沙盒路 1 號")).version();
+            String address = addressId(customer);
+            var existing = db.queryForList("SELECT version,deleted FROM customer_address WHERE id=? AND customer_id=?", address, customer);
+            int addressVersion;
+            if (existing.isEmpty())
+                addressVersion = shopping.saveAddress(customer, address, new ShoppingPayloads.AddressWrite(0, "虛構收件人", "0900000000", "100", "範例市", "展示區", "沙盒路 1 號")).version();
+            else if (truthy(existing.get(0).get("deleted")))
+                throw new IllegalStateException("示範會員的地址已被刪除；請使用新的空沙盒 DB 重新初始化");
+            else addressVersion = ((Number) existing.get(0).get("version")).intValue();
             for (var line : o.lines()) {
-                String skuId = db.queryForObject("SELECT id FROM catalog_sku WHERE code=?", String.class, items.get(line.code()).code());
+                String skuId = db.queryForObject("SELECT id FROM catalog_sku WHERE code=?", String.class, line.code());
                 shopping.setItem(customer, skuId, new ShoppingPayloads.CartWrite(shopping.cart(customer).version(), line.quantity()));
             }
             var cart = shopping.cart(customer);
@@ -288,12 +341,14 @@ public class SandboxSeeder implements ApplicationRunner {
         } else orderId = prior.get(0);
         // 依訂單「目前」狀態接續：已完成的步驟略過（既有 service 的重播核對原始版本，不能拿新版本重送同一編號）
         String state = o.state();
+        if (!Set.of("PENDING_PAYMENT", "PAID").contains(status(orderId)))
+            throw new IllegalStateException("示範訂單已進入終態 " + status(orderId) + "（初始化中斷過久），不能接續；請使用新的空沙盒 DB 重新初始化");
         if (state.equals("PENDING_PAYMENT")) return;
         if (status(orderId).equals("PENDING_PAYMENT")) {
             var started = payments.start(customer, orderId, new PaymentPayloads.Start(uuid(key + "|pay"), orders.detail(customer, orderId).version()));
             payments.simulate(customer, started.payment().id(), new PaymentPayloads.Simulate(uuid(key + "|pay-event"), "SUCCESS"));
         }
-        if (!status(orderId).equals("PAID")) throw new IllegalStateException("示範訂單 " + index + " 付款後狀態不正確：" + status(orderId));
+        if (!status(orderId).equals("PAID")) throw new IllegalStateException("示範訂單付款後狀態不正確：" + status(orderId));
         if (state.equals("PAID")) return;
         if (fulfillmentStatus(orderId).equals("UNFULFILLED"))
             fulfillment.change(orderId, "SHIP", new dev.jackteng.figura.dto.FulfillmentPayloads.Change(uuid(key + "|ship"), orders.detail(customer, orderId).version(), "沙盒模擬出貨"), actor);
@@ -307,7 +362,7 @@ public class SandboxSeeder implements ApplicationRunner {
     private String status(String orderId) { return db.queryForObject("SELECT status FROM customer_order WHERE id=?", String.class, orderId); }
     private String fulfillmentStatus(String orderId) { return db.queryForObject("SELECT fulfillment_status FROM customer_order WHERE id=?", String.class, orderId); }
 
-    private Summary summary(SandboxSeedCatalog data) {
+    private Summary summary(SandboxSeedCatalog data, Map<String, String> customerIds, List<String> keys) {
         var codes = data.items().stream().map(SandboxSeedCatalog.Item::code).toList();
         String in = String.join(",", Collections.nCopies(codes.size(), "?"));
         Object[] args = codes.toArray();
@@ -319,19 +374,33 @@ public class SandboxSeeder implements ApplicationRunner {
             var params = new ArrayList<Object>(); params.add(type); params.addAll(codes);
             images.put(type, db.queryForObject("SELECT COUNT(*) FROM product_image_gallery g JOIN catalog_sku s ON s.product_id=g.product_id WHERE g.image_type=? AND s.code IN (" + in + ")", Integer.class, params.toArray()));
         }
+        // 每筆示範訂單必須存在且已到達目標狀態（付款、配送、退貨）；例如已逾時的待付款訂單不算完成
         int ordersDone = 0;
         for (int i = 0; i < data.orders().size(); i++) {
-            String key = data.orders().get(i).customer();
-            String email = data.customers().stream().filter(x -> x.key().equals(key)).findFirst().orElseThrow().email();
-            String request = uuid("order|" + i + "|" + customers.byEmail(email).getId() + "|place");
-            ordersDone += db.queryForObject("SELECT COUNT(*) FROM customer_order WHERE request_id=?", Integer.class, request);
+            var o = data.orders().get(i);
+            var rows = db.queryForList("SELECT o.status,o.fulfillment_status,(SELECT COUNT(*) FROM mock_order_return r WHERE r.order_id=o.id) ret FROM customer_order o WHERE o.customer_id=? AND o.request_id=?",
+                    customerIds.get(o.customer()), uuid(keys.get(i) + "|place"));
+            if (rows.size() == 1 && reached(o.state(), rows.get(0))) ordersDone++;
         }
         boolean complete = products == codes.size() && published == codes.size() && ordersDone == data.orders().size()
                 && preorders == (int) data.items().stream().filter(i -> i.preorder() != null).count()
                 && images.values().stream().allMatch(n -> n == codes.size());
         if (!complete) throw new IllegalStateException("初始化後核對不完整：" + products + " 件商品、" + published + " 件上架、" + preorders + " 個預購、" + ordersDone + " 筆訂單、圖片 " + images);
-        return new Summary("SEEDED", products, published, preorders, ordersDone, images);
+        return new Summary("SEEDED", products, published, preorders, ordersDone, images, data.fingerprint());
     }
+
+    static boolean reached(String target, Map<String, Object> r) {
+        String status = (String) r.get("status"), fulfillment = (String) r.get("fulfillment_status");
+        boolean returned = ((Number) r.get("ret")).intValue() > 0;
+        return switch (target) {
+            case "PENDING_PAYMENT" -> status.equals("PENDING_PAYMENT");
+            case "PAID" -> status.equals("PAID") && fulfillment.equals("UNFULFILLED");
+            case "SHIPPED" -> status.equals("PAID") && fulfillment.equals("SHIPPED");
+            case "DELIVERED" -> status.equals("PAID") && fulfillment.equals("DELIVERED") && !returned;
+            default -> status.equals("PAID") && fulfillment.equals("DELIVERED") && returned;
+        };
+    }
+    private static boolean truthy(Object v) { return Boolean.TRUE.equals(v) || (v instanceof Number n && n.intValue() != 0); }
 
     /** 由 seed 內容決定的操作編號（UUID v3）：重跑時同一步驟使用同一編號，既有 service 會重播而不是重複建立。 */
     static String uuid(String key) { return UUID.nameUUIDFromBytes(("figura-sandbox-seed|" + key).getBytes(StandardCharsets.UTF_8)).toString(); }

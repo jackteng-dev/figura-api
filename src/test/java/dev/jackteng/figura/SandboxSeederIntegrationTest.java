@@ -39,8 +39,12 @@ class SandboxSeederIntegrationTest extends ShopIntegrationSupport {
     private int count(String sql, Object... args) { return jdbc.queryForObject(sql, Integer.class, args); }
     private static final String CODES = "s.code LIKE 'FIGURA-AI-%'";
 
+    @Autowired dev.jackteng.figura.service.CustomerRegistrationService registration;
+    @Autowired dev.jackteng.figura.service.ShoppingService shopping;
+    private String run;   // 本次測試建立的商品名稱都以此結尾；清理只動這些
+
     @Test void seedsTheWholeCatalogAndIsIdempotent(@TempDir Path broken) throws Exception {
-        String run = UUID.randomUUID().toString().substring(0, 8);
+        run = UUID.randomUUID().toString().substring(0, 8);
         var doc = SandboxSeedFixture.catalog(dir, run);
         SandboxSeedFixture.write(dir, doc);
 
@@ -52,11 +56,19 @@ class SandboxSeederIntegrationTest extends ShopIntegrationSupport {
         assertEquals(4, seeder.execute(new DefaultApplicationArguments("--sandbox.seed.dir=" + broken)));
         assertEquals(productsBefore, count("SELECT COUNT(*) FROM catalog_product")); assertEquals(eventsBefore, count("SELECT COUNT(*) FROM catalog_master_event"));
 
+        // 模擬先前一次中斷：會員與示範地址已提交、訂單尚未建立 → 重跑必須沿用地址目前版本，不能永久 409
+        @SuppressWarnings("unchecked") var buyerA = ((List<Map<String, Object>>) doc.get("customers")).get(0);
+        String buyerId = registration.register(new dev.jackteng.figura.dto.CustomerPayloads.Registration(
+                "Interrupted-" + UUID.randomUUID(), (String) buyerA.get("email"), (String) buyerA.get("phone"))).getId();
+        shopping.saveAddress(buyerId, SandboxSeeder.addressId(buyerId), new dev.jackteng.figura.dto.ShoppingPayloads.AddressWrite(0, "虛構收件人", "0900000000", "100", "範例市", "展示區", "沙盒路 1 號"));
+
         // 第一次初始化
         var summary = seeder.seed(dir);
         assertEquals("SEEDED", summary.result());
         assertEquals(95, summary.products()); assertEquals(95, summary.published()); assertEquals(64, summary.preorders()); assertEquals(8, summary.orders());
         assertEquals(Map.of("MAIN", 95, "FACE", 95, "DETAIL", 95, "SCENE", 95, "REAR", 95), summary.images());
+        assertEquals(SandboxSeedCatalog.load(dir, new com.fasterxml.jackson.databind.ObjectMapper()).fingerprint(), summary.seedSha256());
+        assertEquals(1, count("SELECT COUNT(*) FROM customer_address WHERE customer_id=?", buyerId), "沿用同一個示範地址");
 
         // 每件 5 張圖，類型與排序正確，主圖是 MAIN
         for (var row : jdbc.queryForList("SELECT s.product_id FROM catalog_sku s WHERE " + CODES)) {
@@ -90,17 +102,33 @@ class SandboxSeederIntegrationTest extends ShopIntegrationSupport {
         assertEquals(batches, count("SELECT COUNT(*) FROM preorder_batch")); assertEquals(orders, count("SELECT COUNT(*) FROM customer_order"));
         assertEquals(customers, count("SELECT COUNT(*) FROM customer")); assertEquals(masters, count("SELECT COUNT(*) FROM catalog_master_event"));
         assertEquals("T", jdbc.queryForObject("SELECT is_stop FROM user WHERE username=?", String.class, SandboxSeeder.ACTOR));
+
+        // 調整 seed 中訂單的順序：操作編號依內容決定，不會重複下單
+        @SuppressWarnings("unchecked") var reversed = new java.util.ArrayList<>((List<Object>) doc.get("orders")); java.util.Collections.reverse(reversed); doc.put("orders", reversed);
+        SandboxSeedFixture.write(dir, doc);
+        assertEquals(0, seeder.execute(new DefaultApplicationArguments("--sandbox.seed.dir=" + dir)));
+        assertEquals(orders, count("SELECT COUNT(*) FROM customer_order"));
+
+        // 同 code 但不是這份 seed 建立的商品（名稱不同）：寫入前拒絕，不接手
+        @SuppressWarnings("unchecked") var first = ((List<Map<String, Object>>) doc.get("items")).get(0);
+        first.put("title", "其他來源的商品 " + run);
+        SandboxSeedFixture.write(dir, doc);
+        int auditBefore = count("SELECT COUNT(*) FROM inventory_adjustment"), authBefore = count("SELECT auth_version FROM user WHERE username=?", SandboxSeeder.ACTOR);
+        assertEquals(3, seeder.execute(new DefaultApplicationArguments("--sandbox.seed.dir=" + dir)));
+        assertEquals(auditBefore, count("SELECT COUNT(*) FROM inventory_adjustment"));
+        assertEquals(authBefore, count("SELECT auth_version FROM user WHERE username=?", SandboxSeeder.ACTOR), "拒絕時系統帳號沒有被啟用");
     }
 
     /**
-     * 共用測試 DB：結束後下架並封存本測試建立的商品、關閉其預購批次，並把 SKU code 改成不再佔用的值，
-     * 避免影響其他測試的公開商品數量，也讓下次執行重新建立。只動本測試自己建立的 fixture，不刪任何稽核。
+     * 共用測試 DB：結束後只處理<b>本次測試建立</b>的商品（名稱以本次 run 結尾）：關閉其預購批次、封存，
+     * 並把 SKU code 改成不再佔用的值，避免影響其他測試的公開商品數量。不動其他資料，不刪任何稽核。
      */
     @org.junit.jupiter.api.AfterEach void releaseFixtures() {
-        String tag = UUID.randomUUID().toString().substring(0, 8);
-        jdbc.update("UPDATE preorder_batch b JOIN catalog_sku s ON s.id=b.sku_id SET b.status='CLOSED',b.closed_at=CURRENT_TIMESTAMP(6),b.version=b.version+1 WHERE b.status='OPEN' AND s.code LIKE 'FIGURA-AI-%'");
-        jdbc.update("UPDATE catalog_product p JOIN catalog_sku s ON s.product_id=p.id SET p.status='ARCHIVED',p.version=p.version+1 WHERE s.code LIKE 'FIGURA-AI-%'");
-        jdbc.update("UPDATE catalog_sku SET code=CONCAT('SEEDTEST-',?,'-',SUBSTRING(code,12)) WHERE code LIKE 'FIGURA-AI-%'", tag);
+        if (run == null) return;
+        String mine = "% " + run, tag = UUID.randomUUID().toString().substring(0, 8);
+        jdbc.update("UPDATE preorder_batch b JOIN catalog_sku s ON s.id=b.sku_id JOIN catalog_product p ON p.id=s.product_id SET b.status='CLOSED',b.closed_at=CURRENT_TIMESTAMP(6),b.version=b.version+1 WHERE b.status='OPEN' AND s.code LIKE 'FIGURA-AI-%' AND p.title LIKE ?", mine);
+        jdbc.update("UPDATE catalog_product p JOIN catalog_sku s ON s.product_id=p.id SET p.status='ARCHIVED',p.version=p.version+1 WHERE s.code LIKE 'FIGURA-AI-%' AND p.title LIKE ?", mine);
+        jdbc.update("UPDATE catalog_sku s JOIN catalog_product p ON p.id=s.product_id SET s.code=CONCAT('SEEDTEST-',?,'-',SUBSTRING(s.code,12)) WHERE s.code LIKE 'FIGURA-AI-%' AND p.title LIKE ?", tag, mine);
     }
 
     @Test void argumentsMustNameExactlyOneDirectory() {

@@ -79,7 +79,10 @@ docker compose run --rm -v /usr/local/share/sandbox/figura/seed:/seed:ro api --s
 ```
 
 ### 執行條件（任一不符立即失敗，不寫入任何資料）
-- `SHOP_SANDBOX_MODE=true`、demo profile，且資料庫名稱是隔離的 `figura_shop_demo`。
+- **Spring 啟動前的程序層預檢**（`SandboxSeedLauncher`）：參數格式、`SHOP_SANDBOX_MODE=true`、整份 seed 資源驗證。
+  不通過就直接結束，**不連線資料庫**，Flyway 與其他 initializer 都不會執行。
+- 通過後才啟動 Spring，且 HTTP 只綁 `127.0.0.1` 的隨機埠（命令列參數，優先於環境設定），初始化程序不對外提供任何端點。
+- Spring 內再核對：`SHOP_SANDBOX_MODE=true`、demo profile，且資料庫名稱是隔離的 `figura_shop_demo`。
 - 參數只讀**命令列** `--sandbox.seed.dir`，不讀環境變數或設定檔；一般啟動（沒有這個參數）完全不動作。
 - 同一時間只能執行一個：以 MySQL 具名鎖 `figura_sandbox_seed` 獨占，拿不到鎖立即失敗。
 
@@ -92,16 +95,23 @@ docker compose run --rm -v /usr/local/share/sandbox/figura/seed:/seed:ro api --s
   - `description` 必須以 AI 標示開頭。
   - 訂單只能引用現貨商品，數量不超過現貨。
   - 會員 email 必須是 `example.com`／`example.test` 虛構信箱。
+  - 預購最早到貨日不可早於截止日；預購批次名稱（`{title}｜{series}展示預購`）不超過 120 字；新會員手機不可重複。
   - 每個圖片檔必須在 seed 目錄內：不可 `..`、不可符號連結，且是一般檔案；大小 ≤ 5MB；檔頭符合 PNG／JPEG；SHA-256 與 `sha256` 相同。
+  - 讀取一律有**硬上限**（最多讀上限＋1 byte，不依賴先前的大小檢查）：catalog.json 4MB、圖片 5MB。
   - 缺檔或 SHA 不符 → exit 4。
-- 驗證時串流計算 SHA，不把圖片全部放進記憶體。上傳前再讀一次並重新核對 SHA，驗證後檔案若被更換也會失敗。
+- 驗證時串流計算 SHA，不把圖片全部放進記憶體。上傳前再核對一次路徑（不跟隨連結、仍在目錄內），讀取後重新核對 SHA。
+  驗證後檔案若被更換，會在那張圖失敗；此時前面的商品可能已提交，因此回報 exit 1（不是「未寫入」的 exit 4）。
+  掛載 `:ro` 不能防止宿主機修改來源，seed 目錄應由 reset 流程以不可變的發布版本提供。
 - 圖片交給既有圖片 service 重新編碼（PNG 結果與原檔相同；JPEG 會改變 SHA，屬預期）。驗證的是來源檔 SHA。
 
 ### 執行方式
 - 以系統員工 `sandbox-seeder` 呼叫**既有 service**；所有稽核事件的 actor 都是它。
   - 它只有初始化所需的權限，透過「沙盒初始化」角色授予：`masters.create`、`catalog.write.create`、`catalog.publish`、`catalog.images.upload`、`inventory.adjust`、`preorders.create`、`preorders.open`、`orders.ship.mock`、`orders.deliver.mock`。
-  - 密碼是沒有人知道的隨機值，登入另需 MFA。
-  - 只在執行期間啟用，結束後（含失敗）立即停用並遞增 `auth_version`。
+  - 密碼是沒有人知道、也不保存的隨機值（每次執行重設），登入另需 MFA。
+  - 只在執行期間啟用：啟用時遞增 `auth_version`（撤銷任何舊 session），結束後（含失敗）停用並再遞增。
+  - 若已有同名員工但不是本入口建立的系統帳號（有其他角色），拒絕接手（exit 3）。
+  - 鎖序與員工治理相同：`staff_access_guard` → 員工 → 角色／授權。
+  - 程序被強制終止（SIGKILL／OOM）時 `finally` 不會執行，帳號可能維持啟用；但密碼未知且已撤銷舊 session，無法登入。下次執行或 reset 會再停用。
 - 每件商品的順序與現行 HTTP seed 相同：
   1. 主檔：依名稱沿用或建立。
   2. 草稿商品：1 個 SKU，`contentOrigin=AI_CONCEPT`，其他規格不填。
@@ -116,17 +126,20 @@ docker compose run --rm -v /usr/local/share/sandbox/figura/seed:/seed:ro api --s
 - 訂單：購物車下單 → 模擬付款 → 模擬出貨 → 模擬送達 → 顧客申請模擬退貨，依 `state` 停在對應步驟。全部是模擬，沒有實際收款或物流。
 
 ### 冪等與重跑
-- 所有操作編號由 seed 內容決定（UUID v3）。
+- 寫入前核對既有資料：同 `code` 的商品必須是同類 seed 建立的（名稱相同、`AI_CONCEPT`、description 以 AI 標示開頭）；新會員手機不可已被使用。否則拒絕（exit 3），不接手。
+- 所有操作編號由 seed 內容決定（UUID v3）。訂單編號綁定會員 ID 與訂單內容（目標狀態、品項、數量），調整訂單順序不會重複下單。
+- 每位會員使用一個固定編號的示範地址；地址已提交、下單前中斷時，重跑沿用其目前版本。
 - 已存在的商品（以 SKU code）、圖片類型、庫存調整、預購批次、會員（以 email）、訂單（以下單編號）都不重複建立。
-- 訂單依**目前狀態**接續未完成的步驟。
+- 訂單依**目前狀態**接續未完成的步驟。已進入終態（例如中斷超過 30 分鐘而逾時）的訂單不復活，回報 exit 1，需以新的空沙盒 DB 重建。
 - 中途失敗（exit 1）可直接重跑完成，但不是單一交易。伺服器的 reset 流程仍須「失敗就還原 last-good 快照」。
 
 ### 結果
 - 成功（exit 0）時在 stdout 輸出一行 JSON 摘要，只含數量：
   ```json
-  {"result":"SEEDED","products":95,"published":95,"preorders":64,"orders":8,"images":{"MAIN":95,"FACE":95,"DETAIL":95,"SCENE":95,"REAR":95}}
+  {"result":"SEEDED","products":95,"published":95,"preorders":64,"orders":8,"images":{"MAIN":95,"FACE":95,"DETAIL":95,"SCENE":95,"REAR":95},"seedSha256":"…"}
   ```
-- 摘要前會以 DB 核對；數量不符時視為失敗（exit 1）。
+- `seedSha256` 是 catalog.json 的 SHA-256（其中列有每張圖的 SHA），可與發布的 seed 版本比對。
+- 摘要前會以 DB 核對；每筆訂單必須已到達目標狀態（付款、配送、退貨），數量或狀態不符時視為失敗（exit 1）。
 - Exit code：0 成功；1 執行中失敗（可重跑）；2 參數錯誤；3 環境不允許（非沙盒、非 demo、非隔離 DB、另一個初始化執行中）；4 資源驗證失敗（未寫入）。
 
 ### 不在範圍

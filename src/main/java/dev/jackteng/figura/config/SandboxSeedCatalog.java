@@ -23,15 +23,11 @@ public final class SandboxSeedCatalog {
     static final long MAX_CATALOG_BYTES = 4L * 1024 * 1024, MAX_IMAGE_BYTES = 5L * 1024 * 1024;
 
     /** 圖片只記錄路徑與預期 SHA；上傳前再讀一次並重新核對（不把全部圖片放在記憶體，也避免驗證後被替換）。 */
-    public record Image(String type, int position, String alt, Path file, String sha256, String contentType) {
-        /** 讀取並再次核對大小、SHA 與類型；不符丟 {@link Invalid}。 */
+    public record Image(String type, int position, String alt, Path root, Path file, String sha256, String contentType) {
+        /** 重新核對路徑（不跟隨連結、仍在 seed 目錄內），最多讀取上限＋1 byte，再核對 SHA 與類型；不符丟 {@link Invalid}。 */
         public byte[] read() {
-            byte[] bytes;
-            try {
-                long size = Files.size(file);
-                if (size <= 0 || size > MAX_IMAGE_BYTES) throw invalid("圖片大小不正確：" + file.getFileName());
-                bytes = Files.readAllBytes(file);
-            } catch (IOException e) { throw invalid("圖片無法讀取：" + file.getFileName()); }
+            inside(root, root.relativize(file).toString().replace('\\', '/'));
+            byte[] bytes = bounded(file, MAX_IMAGE_BYTES, "圖片");
             if (!SandboxSeedCatalog.sha256(bytes).equals(sha256) || !contentType.equals(sniff(bytes))) throw invalid("圖片在驗證後被變更：" + file.getFileName());
             return bytes;
         }
@@ -43,8 +39,12 @@ public final class SandboxSeedCatalog {
     public record OrderLine(String code, int quantity) {}
     public record Order(String customer, List<OrderLine> lines, String state) {}
 
-    private final List<Item> items; private final List<Customer> customers; private final List<Order> orders;
-    private SandboxSeedCatalog(List<Item> items, List<Customer> customers, List<Order> orders) { this.items = items; this.customers = customers; this.orders = orders; }
+    private final List<Item> items; private final List<Customer> customers; private final List<Order> orders; private final String fingerprint;
+    private SandboxSeedCatalog(List<Item> items, List<Customer> customers, List<Order> orders, String fingerprint) {
+        this.items = items; this.customers = customers; this.orders = orders; this.fingerprint = fingerprint;
+    }
+    /** catalog.json 的 SHA-256（圖片 SHA 已列在其中），作為這份 seed 內容的指紋。 */
+    public String fingerprint() { return fingerprint; }
     public List<Item> items() { return items; }
     public List<Customer> customers() { return customers; }
     public List<Order> orders() { return orders; }
@@ -59,10 +59,8 @@ public final class SandboxSeedCatalog {
         if (!Files.isDirectory(root)) throw invalid("seed 路徑不是目錄");
         Path catalogFile = inside(root, "catalog.json");
         JsonNode doc;
-        try {
-            if (Files.size(catalogFile) > MAX_CATALOG_BYTES) throw invalid("catalog.json 過大");
-            doc = json.readTree(Files.readAllBytes(catalogFile));
-        } catch (IOException e) { throw invalid("無法讀取 catalog.json"); }
+        byte[] raw = bounded(catalogFile, MAX_CATALOG_BYTES, "catalog.json");
+        try { doc = json.readTree(raw); } catch (IOException e) { throw invalid("無法讀取 catalog.json"); }
         if (doc == null || !doc.isObject()) throw invalid("catalog.json 必須是物件");
         if (doc.path("schemaVersion").asInt(-1) != 2 || !doc.path("schemaVersion").isInt()) throw invalid("schemaVersion 必須是 2（含 images[]）");
         if (!AI_MARKER.equals(doc.path("aiDisclosureMarker").asText(null))) throw invalid("aiDisclosureMarker 不正確");
@@ -86,6 +84,7 @@ public final class SandboxSeedCatalog {
                 preorder = new Preorder(integer(p, "capacity", 1, 100_000), integer(p, "deadlineDaysFromReset", 1, 3650), time,
                         integer(p, "arrivalFromDaysFromReset", 0, 3650), integer(p, "arrivalToDaysFromReset", 0, 3650));
                 if (preorder.arrivalToDays() < preorder.arrivalFromDays()) throw invalid(code + " 的預估到貨區間不正確");
+                if (preorder.arrivalFromDays() < preorder.deadlineDays()) throw invalid(code + " 的最早到貨日不可早於截止日");
             }
             var images = new ArrayList<Image>();
             JsonNode imageNodes = n.path("images");
@@ -102,13 +101,15 @@ public final class SandboxSeedCatalog {
                 String actual = verified.get(file);
                 if (actual == null) { actual = digest(file, code); verified.put(file, actual); }
                 if (!actual.equals(sha + "|" + contentType)) throw invalid(code + " 的圖片 SHA-256 或類型不符：" + rel);
-                images.add(new Image(type, i, alt, file, sha, contentType));
+                images.add(new Image(type, i, alt, root, file, sha, contentType));
             }
-            items.add(new Item(code, title, text(n, "brand", 80), text(n, "series", 80), text(n, "category", 80), text(n, "variant", 80),
+            String series = text(n, "series", 80);
+            if ((title + "｜" + series + "展示預購").length() > 120) throw invalid(code + " 的名稱與系列過長（預購批次名稱最多 120 字）");
+            items.add(new Item(code, title, text(n, "brand", 80), series, text(n, "category", 80), text(n, "variant", 80),
                     price, stock, preorder, description, List.copyOf(images)));
         }
 
-        var customers = new ArrayList<Customer>(); var keys = new HashSet<String>(); var emails = new HashSet<String>();
+        var customers = new ArrayList<Customer>(); var keys = new HashSet<String>(); var emails = new HashSet<String>(); var phones = new HashSet<String>();
         JsonNode customerNodes = doc.path("customers");
         if (!customerNodes.isArray() || customerNodes.size() > 50) throw invalid("customers 必須是陣列（最多 50）");
         for (JsonNode c : customerNodes) {
@@ -117,7 +118,7 @@ public final class SandboxSeedCatalog {
             if (!key.matches("[a-z0-9_]{1,64}") || !keys.add(key)) throw invalid("會員 key 不正確或重複：" + key);
             if (!email.matches("[^@\\s]+@example\\.(com|test)") || !emails.add(email)) throw invalid("會員 email 必須是不重複的 example.com／example.test 虛構信箱");
             String phone = null;
-            if (!builtin) { phone = text(c, "phone", 16); if (!phone.matches("09[0-9]{8}")) throw invalid("會員手機格式不正確：" + key); }
+            if (!builtin) { phone = text(c, "phone", 16); if (!phone.matches("09[0-9]{8}") || !phones.add(phone)) throw invalid("會員手機格式不正確或重複：" + key); }
             customers.add(new Customer(key, email, phone, builtin));
         }
 
@@ -147,7 +148,7 @@ public final class SandboxSeedCatalog {
         var demand = new HashMap<String, Integer>();
         for (var o : orders) for (var l : o.lines()) demand.merge(l.code(), l.quantity(), Integer::sum);
         demand.forEach((code, qty) -> { if (byCode.get(code).stock() < qty) throw invalid("訂單需求超過現貨數量：" + code); });
-        return new SandboxSeedCatalog(List.copyOf(items), List.copyOf(customers), List.copyOf(orders));
+        return new SandboxSeedCatalog(List.copyOf(items), List.copyOf(customers), List.copyOf(orders), sha256(raw));
     }
 
     /** 解析 seed 目錄內的相對路徑：不得跳出目錄、不得是符號連結或非一般檔案。 */
@@ -167,13 +168,27 @@ public final class SandboxSeedCatalog {
             if (size <= 0 || size > MAX_IMAGE_BYTES) throw invalid(code + " 的圖片大小不正確（最大 5MB）");
             var md = MessageDigest.getInstance("SHA-256");
             byte[] head = null, buf = new byte[65536];
-            try (var in = Files.newInputStream(file)) {
+            long total = 0;
+            try (var in = Files.newInputStream(file, LinkOption.NOFOLLOW_LINKS)) {
                 int n;
-                while ((n = in.read(buf)) > 0) { if (head == null) head = Arrays.copyOf(buf, Math.min(n, 16)); md.update(buf, 0, n); }
+                while ((n = in.read(buf)) > 0) {
+                    total += n;
+                    if (total > MAX_IMAGE_BYTES) throw invalid(code + " 的圖片大小不正確（最大 5MB）");
+                    if (head == null) head = Arrays.copyOf(buf, Math.min(n, 16));
+                    md.update(buf, 0, n);
+                }
             }
             return HexFormat.of().formatHex(md.digest()) + "|" + sniff(head == null ? new byte[0] : head);
         } catch (IOException e) { throw invalid(code + " 的圖片無法讀取"); }
         catch (java.security.NoSuchAlgorithmException e) { throw new IllegalStateException(e); }
+    }
+    /** 實際最多讀取 max＋1 byte（不依賴先前的大小檢查），超過或為空即失敗；不跟隨符號連結。 */
+    private static byte[] bounded(Path file, long max, String what) {
+        try (var in = Files.newInputStream(file, LinkOption.NOFOLLOW_LINKS)) {
+            byte[] bytes = in.readNBytes((int) max + 1);
+            if (bytes.length == 0 || bytes.length > max) throw invalid(what + " 大小不正確：" + file.getFileName());
+            return bytes;
+        } catch (IOException e) { throw invalid(what + " 無法讀取：" + file.getFileName()); }
     }
     private static String sniff(byte[] b) {
         if (b.length > 8 && (b[0] & 0xff) == 0x89 && b[1] == 'P' && b[2] == 'N' && b[3] == 'G') return "image/png";

@@ -68,6 +68,53 @@ class SandboxSeedCatalogTest {
         doc = valid(); doc.put("orders", List.of(Map.of("customer", "sample_buyer_a", "state", "REFUNDED", "items", List.of(List.of("FIGURA-AI-001", 1))))); rejects(doc, "不支援的狀態");
         doc = valid(); doc.put("orders", List.of(Map.of("customer", "sample_buyer_a", "state", "PAID", "items", List.of(List.of("FIGURA-AI-001", 11))))); rejects(doc, "超過現貨");
         doc = valid(); doc.put("customers", List.of(Map.of("key", "x", "email", "real@gmail.com", "phone", "0900000001", "password", "p"))); doc.put("orders", List.of()); rejects(doc, "只接受虛構信箱");
+        // 寫入途中才會失敗的條件，在預檢就拒絕
+        doc = valid(); items(doc).get(40).put("preorder", Map.of("capacity", 16, "deadlineDaysFromReset", 30, "deadlineTime", "23:59+08:00", "arrivalFromDaysFromReset", 20, "arrivalToDaysFromReset", 40)); rejects(doc, "到貨早於截止");
+        doc = valid(); doc.put("customers", List.of(Map.of("key", "a", "email", "a@example.test", "phone", "0900000001", "password", "p"), Map.of("key", "b", "email", "b@example.test", "phone", "0900000001", "password", "p"))); doc.put("orders", List.of()); rejects(doc, "手機重複");
+        doc = valid(); items(doc).get(0).put("title", "長".repeat(115)); rejects(doc, "預購批次名稱超過 120 字");
+    }
+
+    @Test void readsAreBoundedAndRecheckedAtUploadTime() throws Exception {
+        valid();
+        var c = SandboxSeedCatalog.load(dir, json);
+        var image = c.items().get(2).images().get(1);
+        // 驗證後被換成超過上限的檔案：讀取最多上限＋1 byte 即失敗，不配置整個檔案
+        Files.write(image.file(), new byte[(int) SandboxSeedCatalog.MAX_IMAGE_BYTES + 10]);
+        assertThrows(SandboxSeedCatalog.Invalid.class, image::read);
+        // 驗證後被刪除
+        var other = c.items().get(3).images().get(2);
+        Files.delete(other.file());
+        assertThrows(SandboxSeedCatalog.Invalid.class, other::read);
+        // 內容指紋：同一份 catalog.json 相同
+        valid();
+        assertEquals(SandboxSeedCatalog.load(dir, json).fingerprint(), SandboxSeedCatalog.load(dir, json).fingerprint());
+    }
+
+    @Test void orderKeysDependOnContentNotPosition() throws Exception {
+        valid();
+        var c = SandboxSeedCatalog.load(dir, json);
+        var ids = Map.of("sample_buyer_a", "A", "sample_buyer_b", "B");
+        var keys = SandboxSeeder.orderKeys(c, ids);
+        assertEquals(8, new HashSet<>(keys).size());
+        var doc = valid();
+        @SuppressWarnings("unchecked") var reversed = new ArrayList<>((List<Object>) doc.get("orders")); Collections.reverse(reversed); doc.put("orders", reversed);
+        SandboxSeedFixture.write(dir, doc);
+        var again = SandboxSeeder.orderKeys(SandboxSeedCatalog.load(dir, json), ids);
+        assertEquals(new HashSet<>(keys), new HashSet<>(again), "調整順序不改變每筆訂單的操作編號");
+    }
+
+    @Test void launcherRefusesBeforeSpringStarts() throws Exception {
+        valid();
+        String arg = "--sandbox.seed.dir=" + dir;
+        assertEquals(3, SandboxSeedLauncher.preflight(new String[]{arg}, k -> null), "未啟用沙盒");
+        assertEquals(3, SandboxSeedLauncher.preflight(new String[]{arg}, k -> "TRUE"), "只接受字面 true");
+        assertEquals(2, SandboxSeedLauncher.preflight(new String[]{arg, "--sandbox.seed.dir=/x"}, k -> "true"));
+        assertEquals(2, SandboxSeedLauncher.preflight(new String[]{"--sandbox.seed.dir"}, k -> "true"));
+        assertEquals(4, SandboxSeedLauncher.preflight(new String[]{"--sandbox.seed.dir=" + dir.resolve("missing")}, k -> "true"));
+        assertNull(SandboxSeedLauncher.preflight(new String[]{arg}, k -> "SHOP_SANDBOX_MODE".equals(k) ? "true" : null));
+        assertTrue(SandboxSeedLauncher.requested(new String[]{arg})); assertFalse(SandboxSeedLauncher.requested(new String[]{"--server.port=1"}));
+        var launch = List.of(SandboxSeedLauncher.launchArgs(new String[]{arg}));
+        assertTrue(launch.contains("--server.address=127.0.0.1") && launch.contains("--server.port=0"), "初始化程序不對外提供 HTTP");
     }
 
     @Test void creationOrderInterleavesSeriesAndReverses() throws Exception {
